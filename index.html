@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0a0a0a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>offcut — 촬영 로거</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="flash"></div>
+
+<header>
+  <div class="proj" id="hProject">오늘의 촬영</div>
+  <div class="hbtns">
+    <button id="btnExport" class="hbtn">보내기</button>
+    <button id="btnSettings" class="hbtn">설정</button>
+  </div>
+</header>
+
+<main>
+  <div id="clockWrap">
+    <div id="recDot"></div>
+    <div id="takeLabel">STANDBY</div>
+    <div id="clock">00:00:00:00</div>
+    <div id="wallSub"></div>
+  </div>
+
+  <div id="controls">
+    <button id="btnRoll" class="big roll">ROLL</button>
+    <div id="rollCtl" class="hidden">
+      <div class="jrow">
+        <button class="jbtn ok" data-j="OK">채택</button>
+        <button class="jbtn keep" data-j="KEEP">보류</button>
+        <button class="jbtn ng" data-j="NG">버림</button>
+      </div>
+      <button id="btnUndoSec" class="undo hidden">↩ 직전 구간 판정 취소</button>
+      <button id="btnCut" class="big cut">CUT</button>
+    </div>
+    <div id="memoBar" class="hidden">
+      <input id="memoInput" placeholder="메모 — 지문·내용 바로 기록" autocomplete="off" enterkeyhint="send">
+      <button id="memoSend">기록</button>
+    </div>
+    <div id="memoFeed"></div>
+  </div>
+
+  <div id="tlWrap"><div id="timeline"><div id="playhead"></div></div></div>
+
+  <div id="takeList"></div>
+</main>
+
+<!-- CUT 판정 시트 -->
+<div id="sheet" class="sheet hidden">
+  <div class="sheetBox">
+    <div class="sheetTitle" id="sheetTitle">테이크 판정</div>
+    <div class="sheetClock" id="sheetClock">00:00:00:00</div>
+    <input id="sheetNote" class="note" placeholder="노트 (선택) — 예: 인터뷰어 웃음" autocomplete="off">
+    <div class="sheetBtns">
+      <button class="judge ok" data-s="OK">채택</button>
+      <button class="judge keep" data-s="KEEP">보류</button>
+      <button class="judge ng" data-s="NG">버림</button>
+    </div>
+    <button id="sheetCancel" class="sheetCancel">계속 롤 (타이머 안 멈춤)</button>
+  </div>
+</div>
+
+<!-- 보내기 시트 -->
+<div id="exportSheet" class="sheet hidden">
+  <div class="sheetBox">
+    <div class="sheetTitle">편집으로 보내기</div>
+    <p class="hint">FCPXML을 프리미어에 임포트하면 테이크별 클립 + NG 마커가 타임라인에 뜹니다. 카메라 파일명 패턴이 맞으면 자동 릴링크됩니다.</p>
+    <div class="expBtns">
+      <button id="expFcp" class="expBtn">FCPXML 보내기/저장</button>
+      <button id="expSrt" class="expBtn">SRT 자막 보내기/저장</button>
+      <button id="expCsv" class="expBtn">CSV 보내기/저장</button>
+    </div>
+    <button id="expCancel" class="sheetCancel">닫기</button>
+  </div>
+</div>
+
+<!-- 설정 시트 -->
+<div id="setSheet" class="sheet hidden">
+  <div class="sheetBox">
+    <div class="sheetTitle">설정</div>
+    <label class="fld">프로젝트명 <input id="setProject" autocomplete="off"></label>
+    <label class="fld">프레임레이트
+      <select id="setFps">
+        <option value="23.976">23.976</option>
+        <option value="24">24</option>
+        <option value="25">25</option>
+        <option value="29.97">29.97</option>
+        <option value="30">30</option>
+        <option value="50">50</option>
+        <option value="59.94">59.94</option>
+        <option value="60">60</option>
+      </select>
+    </label>
+    <label class="fld">카메라 파일명 <span class="hint">예: C0001.MP4 → 프리픽스 C, 시작번호 1</span>
+      <div class="row">
+        <input id="setPrefix" maxlength="4" autocomplete="off">
+        <input id="setStartNo" type="number" min="0" max="9999">
+      </div>
+    </label>
+    <label class="fld chk"><input type="checkbox" id="setSlate"> ROLL 시작 시 화면 플래시 + 삑 소리 (슬레이트 대용)</label>
+    <label class="fld chk"><input type="checkbox" id="setSound"> 버튼 진동/사운드</label>
+    <button id="setClose" class="sheetCancel">닫기</button>
+    <button id="setReset" class="danger">로그 전체 삭제</button>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
