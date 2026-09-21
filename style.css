@@ -36,8 +36,13 @@ body.rolling #clock { font-weight:600; }
   width:100%; border:none; border-radius:18px; font-weight:800;
   font-size:28px; letter-spacing:.08em; color:#fff; touch-action:manipulation;
 }
-#btnRoll { background:#c82f28; height:88px; }
+#btnRoll { background:#c82f28; height:88px; position:relative; overflow:hidden; -webkit-touch-callout:none; }
 #btnRoll:active { transform:scale(.98); }
+#rollFill { position:absolute; top:0; left:0; bottom:0; width:0; background:rgba(255,255,255,.3); pointer-events:none; }
+#btnRoll.holding #rollFill { animation:holdfill .65s linear forwards; }
+@keyframes holdfill { to { width:100%; } }
+#btnRoll .rlabel { position:relative; z-index:1; }
+#btnRoll .holdHint { display:block; font-size:12px; font-weight:600; letter-spacing:.02em; opacity:.7; margin-top:1px; }
 #rollCtl { display:flex; flex-direction:column; gap:10px; }
 .jrow { display:flex; gap:8px; }
 .jbtn { flex:1; height:56px; border:none; border-radius:14px; font-size:17px; font-weight:800; }

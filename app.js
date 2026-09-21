@@ -317,7 +317,19 @@ async function sendFile(name, text, mime) {
 const safeName = () => `${S.project.replace(/\s+/g, '_')}_촬영로그_${new Date().toISOString().slice(0, 10)}`;
 
 /* ---------- wiring ---------- */
-$('#btnRoll').addEventListener('click', roll);
+/* ROLL은 꾹 눌러 시작 (오타치 방지 — 유령 롤은 카메라 파일 번호와 어긋남) */
+{
+  const rb = $('#btnRoll');
+  let holdT = null;
+  const endHold = () => { if (holdT) { clearTimeout(holdT); holdT = null; } rb.classList.remove('holding'); };
+  rb.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    rb.classList.add('holding');
+    holdT = setTimeout(() => { holdT = null; rb.classList.remove('holding'); roll(); }, 650);
+  });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => rb.addEventListener(ev, endHold));
+  rb.addEventListener('contextmenu', e => e.preventDefault());
+}
 document.querySelectorAll('.jbtn').forEach(b => b.addEventListener('click', () => sectionMark(b.dataset.j)));
 $('#btnUndoSec').addEventListener('click', undoSection);
 $('#btnCut').addEventListener('click', cut);
@@ -342,6 +354,11 @@ $('#takeList').addEventListener('click', e => {
     const num = +del.dataset.del;
     if (confirm(`테이크 ${num} 로그 삭제?`)) {
       S.takes = S.takes.filter(x => x.num !== num);
+      const later = S.takes.filter(x => x.num > num);
+      if ((later.length || num === S.seq - 1) && confirm('이 롤을 카메라가 안 찍었나요? (맞으면 이후 테이크 번호·파일명을 하나씩 당깁니다)')) {
+        later.forEach(t => { t.num--; t.fname = fileName(t.num); });
+        S.seq--;
+      }
       save(); render();
     }
   }
