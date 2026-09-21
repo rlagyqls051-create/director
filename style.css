@@ -3,10 +3,12 @@ html,body { height:100%; }
 body {
   background:#0a0a0a; color:#eee;
   font-family:-apple-system,'SF Pro','Pretendard',system-ui,sans-serif;
-  display:flex; flex-direction:column; height:100dvh; overflow:hidden;
+  display:flex; flex-direction:column; height:100%; height:100dvh; overflow:hidden;
   overscroll-behavior:none;
-  user-select:none; -webkit-user-select:none;
+  user-select:none; -webkit-user-select:none; -webkit-touch-callout:none;
 }
+button, input, select { font-family:inherit; }
+button { touch-action:manipulation; }
 
 #flash { position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:99; transition:opacity .08s; display:flex; align-items:center; justify-content:center; }
 #flash.on { opacity:1; }
@@ -31,7 +33,7 @@ body.rolling #recDot { background:#ff3b30; animation:pulse 1s infinite; }
 body.rolling #takeLabel { color:#ff3b30; }
 #clock { font-size:clamp(44px,13vw,72px); font-weight:200; font-variant-numeric:tabular-nums; font-feature-settings:"tnum"; letter-spacing:.02em; }
 body.rolling #clock { font-weight:600; }
-#wallSub { font-size:12px; color:#555; font-variant-numeric:tabular-nums; }
+#wallSub { font-size:12px; color:#555; font-variant-numeric:tabular-nums; min-height:16px; }
 
 #controls { padding:6px 0 14px; }
 .big {
@@ -114,6 +116,7 @@ body.rolling #playhead { display:block; }
   width:100%; background:#1c1c1e; border-radius:18px 18px 0 0;
   padding:20px 18px calc(env(safe-area-inset-bottom) + 18px);
   animation:up .18s ease-out;
+  max-height:86vh; max-height:86dvh; overflow-y:auto; overscroll-behavior:contain;
 }
 @keyframes up { from { transform:translateY(30%); } }
 .sheetTitle { font-size:17px; font-weight:700; margin-bottom:10px; }
@@ -128,7 +131,8 @@ body.rolling #playhead { display:block; }
 .sheetCancel { width:100%; margin-top:12px; background:none; border:none; color:#888; font-size:14px; padding:8px; }
 .hint { font-size:12px; color:#777; line-height:1.5; margin-bottom:12px; }
 .expBtns { display:flex; flex-direction:column; gap:10px; }
-.expBtn { background:#0a84ff; color:#fff; border:none; border-radius:12px; padding:15px; font-size:16px; font-weight:700; }
+.expBtn { background:#2c2c2e; color:#eee; border:none; border-radius:12px; padding:15px; font-size:16px; font-weight:700; }
+.expBtn.primary { background:#0a84ff; color:#fff; }
 .fld { display:block; font-size:13px; color:#aaa; margin-bottom:14px; }
 .fld input, .fld select {
   display:block; width:100%; margin-top:5px; background:#2c2c2e; border:1px solid #3a3a3c;
@@ -139,4 +143,17 @@ body.rolling #playhead { display:block; }
 .fld.chk { display:flex; align-items:center; gap:9px; }
 .fld.chk input { width:20px; height:20px; margin:0; }
 .danger { width:100%; margin-top:14px; background:none; border:1px solid #5a2222; color:#ff6b62; border-radius:10px; padding:11px; font-size:14px; }
+
+/* 작은 화면 / 가로모드: 클럭·버튼 축소해서 한 화면에 */
+@media (max-height:620px) {
+  #clock { font-size:clamp(32px,9vw,50px); }
+  #clockWrap { padding:2px 0 6px; }
+  #btnRoll { height:66px; font-size:22px; }
+  #btnCut { height:56px; font-size:22px; }
+  .jbtn { height:46px; font-size:15px; }
+  #tlWrap { height:42px; margin-bottom:6px; }
+  #memoInput { padding:10px 12px; }
+  #memoFeed { max-height:52px; }
+}
+
 .hidden { display:none !important; }

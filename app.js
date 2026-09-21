@@ -120,13 +120,13 @@ async function micStart() {
   } catch {}
 }
 
-function micStop(num) {
+function micStop(num, keep = true) {
   if (!rec) return;
   const r = rec; rec = null;
   cancelAnimationFrame(r.raf);
   r.mr.onstop = () => {
     const blob = new Blob(r.chunks, { type: r.mr.mimeType || 'audio/mp4' });
-    if (blob.size) audioBlobs.set(num, { blob, ext: r.ext });
+    if (keep && blob.size) audioBlobs.set(num, { blob, ext: r.ext });
     r.stream.getTracks().forEach(t => t.stop());
     r.ctx.close().catch(() => {});
   };
@@ -191,6 +191,7 @@ function cut() {
 }
 
 function judge(secStatus, takeStatus) {
+  if (!S.cur) return;
   const end = S.cur.cutAt || Date.now();
   const rel = end - S.cur.startMs;
   if (rel - S.cur.secStart >= 1) S.cur.sections.push({ start: S.cur.secStart, end: rel, status: secStatus });
@@ -215,6 +216,7 @@ const PXS = 8; // px per second
 const secHTML = s =>
   `<div class="tlSec ${s.status}" style="width:${Math.max(2, (s.end - s.start) / 1000 * PXS)}px"></div>`;
 function renderTimeline() {
+  $('#tlWrap').style.display = (S.takes.length || S.cur) ? '' : 'none';
   $('#timeline').innerHTML = S.takes.map(t =>
     `<div class="tlTake" style="width:${Math.max(3, (t.endMs - t.startMs) / 1000 * PXS)}px">` +
     `<span class="tlNum">T${pad(t.num, 2)}</span>${(t.sections || []).map(secHTML).join('')}</div>`
@@ -464,6 +466,11 @@ $('#takeList').addEventListener('click', e => {
 
 $('#btnExport').addEventListener('click', () => $('#exportSheet').classList.remove('hidden'));
 $('#expCancel').addEventListener('click', () => $('#exportSheet').classList.add('hidden'));
+// 시트 배경 탭으로 닫기 (보내기/설정만 — 판정 시트는 명시적 선택 필요)
+['#exportSheet', '#setSheet'].forEach(id => {
+  const el = $(id);
+  el.addEventListener('click', e => { if (e.target === el) el.classList.add('hidden'); });
+});
 $('#expFcp').addEventListener('click', () => {
   if (!S.takes.length) return alert('기록된 테이크가 없습니다.');
   sendFile(safeName() + '.fcpxml', buildFCPXML(), 'application/xml');
@@ -525,7 +532,9 @@ $('#setClose').addEventListener('click', () => {
 });
 $('#setReset').addEventListener('click', () => {
   if (confirm('테이크 로그를 전부 삭제할까요? (되돌릴 수 없음)')) {
+    if (S.cur) micStop(S.cur.num, false);   // 롤 중 리셋이면 녹음은 버림
     S.takes = []; S.seq = 1; S.cur = null; audioBlobs.clear();
+    setWake(false);
     save(); render();
     $('#setSheet').classList.add('hidden');
     document.body.classList.remove('rolling');
@@ -533,4 +542,5 @@ $('#setReset').addEventListener('click', () => {
 });
 
 render();
+if (S.cur && S.mic) micStart();   // 롤 중 앱 재시작 → 녹음 재개 (권한 물어볼 수 있음)
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
