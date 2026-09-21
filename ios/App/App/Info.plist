@@ -66,5 +66,7 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>롤 중 오디오를 녹음해 카메라 영상과 싱크를 맞추는 데 사용합니다. 오디오는 기기에만 저장됩니다.</string>
 </dict>
 </plist>

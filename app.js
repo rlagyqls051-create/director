@@ -12,6 +12,7 @@ function fresh() {
     slate: true,
     sound: true,
     syncOffset: 0,        // ms — 플래시(app 0초)가 카메라 파일 안에서 밀린 시간 (카메라 선행 롤 = 양수)
+    mic: false,           // 롤 중 마이크 녹음 + 박수 감지
     takes: [],          // {num, fname, startMs, endMs, status, sections:[{start,end,status}], memos:[{ms,text}], note}
     seq: 1,
     cur: null,          // rolling take: {num, fname, startMs, secStart, sections:[], memos:[]}
@@ -22,6 +23,7 @@ try { S = JSON.parse(localStorage.getItem(LS_KEY) || localStorage.getItem('offcu
 localStorage.removeItem('offcut.v1'); localStorage.removeItem('director.v1');
 S.takes.forEach(t => { if (t.status === 'KEEP') t.status = 'HOLD'; });
 if (S.syncOffset == null) S.syncOffset = 0;
+if (S.mic == null) S.mic = false;
 if (S.cur) delete S.cur.cutAt;
 const save = () => localStorage.setItem(LS_KEY, JSON.stringify(S));
 
@@ -78,6 +80,59 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && S.cur) setWake(true);
 });
 
+/* ---------- mic recording + clap detect (싱크용) ---------- */
+let rec = null;                     // {mr, stream, ctx, chunks, ext, raf}
+const audioBlobs = new Map();       // takeNum → {blob, ext}  (메모리만 — 앱 재시작 시 소실)
+
+async function micStart() {
+  if (!S.mic || rec) return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    if (!S.cur) { stream.getTracks().forEach(t => t.stop()); return; }
+    const mime = MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4'
+      : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+    const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    const chunks = [];
+    mr.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+    mr.start(500);
+    // 트랜지언트(박수/슬레이트) 감지: 순간 피크가 롤링 베이스라인의 4배 이상
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const an = ctx.createAnalyser(); an.fftSize = 1024;
+    ctx.createMediaStreamSource(stream).connect(an);
+    const buf = new Float32Array(an.fftSize);
+    let base = 0.02, lastClap = -1e9;
+    const tick = () => {
+      if (!rec || !S.cur) return;
+      an.getFloatTimeDomainData(buf);
+      let peak = 0;
+      for (let i = 0; i < buf.length; i++) peak = Math.max(peak, Math.abs(buf[i]));
+      const now = Date.now() - S.cur.startMs;
+      base = base * 0.98 + peak * 0.02;
+      if (peak > 0.5 && peak > base * 4 && now - lastClap > 400) {
+        lastClap = now;
+        S.cur.memos.push({ ms: Math.round(now), text: '슬레이트 감지' });
+        save(); render();
+      }
+      rec.raf = requestAnimationFrame(tick);
+    };
+    rec = { mr, stream, ctx, chunks, ext: mime.includes('mp4') ? 'm4a' : 'webm' };
+    rec.raf = requestAnimationFrame(tick);
+  } catch {}
+}
+
+function micStop(num) {
+  if (!rec) return;
+  const r = rec; rec = null;
+  cancelAnimationFrame(r.raf);
+  r.mr.onstop = () => {
+    const blob = new Blob(r.chunks, { type: r.mr.mimeType || 'audio/mp4' });
+    if (blob.size) audioBlobs.set(num, { blob, ext: r.ext });
+    r.stream.getTracks().forEach(t => t.stop());
+    r.ctx.close().catch(() => {});
+  };
+  try { r.mr.stop(); } catch {}
+}
+
 /* ---------- roll / cut / ng ---------- */
 function roll() {
   buzz(30);
@@ -92,6 +147,7 @@ function roll() {
   }
   document.body.classList.add('rolling');
   setWake(true);
+  micStart();
   render();
 }
 
@@ -145,6 +201,7 @@ function judge(secStatus, takeStatus) {
     startMs: S.cur.startMs, endMs: end,
     status: takeStatus || auto, sections: secs, memos: S.cur.memos, note: $('#sheetNote').value.trim(),
   });
+  micStop(S.cur.num);
   S.seq++; S.cur = null;
   save();
   $('#sheet').classList.add('hidden');
@@ -336,6 +393,13 @@ async function sendFile(name, text, mime) {
 
 const safeName = () => `${S.project.replace(/\s+/g, '_')}_촬영로그_${new Date().toISOString().slice(0, 10)}`;
 
+const blobToB64 = blob => new Promise((res, rej) => {
+  const r = new FileReader();
+  r.onload = () => res(String(r.result).split(',')[1]);
+  r.onerror = rej;
+  r.readAsDataURL(blob);
+});
+
 /* ---------- wiring ---------- */
 /* ROLL은 꾹 눌러 시작 (오타치 방지 — 유령 롤은 카메라 파일 번호와 어긋남) */
 {
@@ -387,6 +451,7 @@ $('#takeList').addEventListener('click', e => {
     const num = +del.dataset.del;
     if (confirm(`테이크 ${num} 로그 삭제?`)) {
       S.takes = S.takes.filter(x => x.num !== num);
+      audioBlobs.delete(num);
       const later = S.takes.filter(x => x.num > num);
       if ((later.length || num === S.seq - 1) && confirm('이 롤을 카메라가 안 찍었나요? (맞으면 이후 테이크 번호·파일명을 하나씩 당깁니다)')) {
         later.forEach(t => { t.num--; t.fname = fileName(t.num); });
@@ -412,6 +477,28 @@ $('#expCsv').addEventListener('click', () => {
   if (!S.takes.length) return alert('기록된 테이크가 없습니다.');
   sendFile(safeName() + '.csv', buildCSV(), 'text/csv');
 });
+$('#expAud').addEventListener('click', async () => {
+  if (!audioBlobs.size) return alert('녹음된 오디오가 없습니다. (설정에서 마이크 녹음을 켜고 롤하세요)');
+  const files = [...audioBlobs.entries()].sort((a, b) => a[0] - b[0])
+    .map(([n, { blob, ext }]) => ({ name: `T${pad(n, 2)}.${ext}`, blob }));
+  if (CAP && CAP.Filesystem && CAP.Share) {
+    const urls = [];
+    for (const f of files) {
+      await CAP.Filesystem.writeFile({ path: f.name, data: await blobToB64(f.blob), directory: 'CACHE', recursive: true });
+      urls.push((await CAP.Filesystem.getUri({ path: f.name, directory: 'CACHE' })).uri);
+    }
+    await CAP.Share.share({ files: urls });
+    return;
+  }
+  const fs = files.map(f => new File([f.blob], f.name, { type: f.blob.type }));
+  if (navigator.canShare && navigator.canShare({ files: fs })) {
+    try { await navigator.share({ files: fs }); return; } catch (e) { if (e.name === 'AbortError') return; }
+  }
+  fs.forEach((f, i) => setTimeout(() => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(f); a.download = f.name; a.click();
+  }, i * 400));
+});
 
 $('#btnSettings').addEventListener('click', () => {
   $('#setProject').value = S.project;
@@ -421,6 +508,7 @@ $('#btnSettings').addEventListener('click', () => {
   $('#setSync').value = S.syncOffset / 1000;
   $('#setSlate').checked = S.slate;
   $('#setSound').checked = S.sound;
+  $('#setMic').checked = S.mic;
   $('#setSheet').classList.remove('hidden');
 });
 $('#setClose').addEventListener('click', () => {
@@ -431,12 +519,13 @@ $('#setClose').addEventListener('click', () => {
   S.slate = $('#setSlate').checked;
   S.sound = $('#setSound').checked;
   S.syncOffset = (+$('#setSync').value || 0) * 1000;
+  S.mic = $('#setMic').checked;
   save(); render();
   $('#setSheet').classList.add('hidden');
 });
 $('#setReset').addEventListener('click', () => {
   if (confirm('테이크 로그를 전부 삭제할까요? (되돌릴 수 없음)')) {
-    S.takes = []; S.seq = 1; S.cur = null;
+    S.takes = []; S.seq = 1; S.cur = null; audioBlobs.clear();
     save(); render();
     $('#setSheet').classList.add('hidden');
     document.body.classList.remove('rolling');
