@@ -2,10 +2,22 @@
 
 > 최종 갱신: 2026-09-21 · 이 파일은 재개 시 현재 상태 정본. README는 사용자 문서, 이 파일은 작업 인계용.
 
+## 2026-09-21 리뷰 수정 — 로컬 후보
+
+- D1: Premiere용 FCP7 XMEML v4 `.xml`로 변경. 8종 fps의 정수 timebase/NTSC, trim·음수 소스 시작의 timeline gap, 비디오/스테레오 링크, 시퀀스 마커, URL 인코딩. `/RELINK/` 참조는 사용자가 실제 원본에 연결한다. 1080p 출력과 카메라 fps 설정 가정을 도움말에 명시했다.
+- D2/D3: 구 저장키는 새키 저장 성공 후 삭제한다. 유령 테이크 재번호는 현재 롤·다음 번호·오디오 Map을 함께 갱신하고 비동기 stop은 테이크 객체를 추적한다. 삭제·리셋 뒤 늦게 온 오디오를 되살리지 않는다.
+- D4: getUserMedia 요청 세대/테이크 소유권 확인, 오류·중단·지연 응답의 stream 정리. 실제 마이크 없이 테스트 대역으로 검증했다.
+- D5: 텍스트 네이티브 저장에 UTF8 지정, 오디오는 base64 유지. 저장·공유 실패 메시지와 파일명 경로문자 정리.
+- D6: CUT 중 시간·메모/구간 입력 고정, 취소 시 연속 시간 복구, 판정 대기 재시작 복원. 이전에 저장된 잘못된 SRT 메모도 범위/정렬/동일시각 병합으로 보호하며 XML과 같은 프레임 누적으로 위치를 맞춘다.
+- **오디오 경계**: 판정 대기 중 녹음은 유지하고 확정 시 종료한다. CUT까지의 로그보다 오디오가 길 수 있다. 컨테이너 일부만 잘라 손상시키지 않으며, 취소 시 카메라 시간축을 유지한다. 오디오 영속 저장은 추가하지 않았다.
+- 검증: `npm test`, `npm run check`, `node tools/sync-www.js`(웹 에셋 로컬 복사만). 회귀·변조 원문은 주 작업 보고서와 `/private/tmp/offcut-fix-director/`에 있다. 네이티브 빌드, 실마이크, Premiere 실제 import, 설치·배포는 이번 수정에서 실행하지 않았다. 아래 과거 실기·배포 기록을 새 후보의 실기로 재사용하지 않는다.
+
+공식 참조: [Apple XML basics](https://developer.apple.com/library/archive/documentation/AppleApplications/Reference/FinalCutPro_XML/Basics/Basics.html), [elements](https://developer.apple.com/library/archive/documentation/AppleApplications/Reference/FinalCutPro_XML/Elements/Elements.html), [Capacitor Filesystem](https://capacitorjs.com/docs/apis/filesystem#writefileoptions).
+
 ## 이게 뭔가
 
 모바일 촬영 로거. 감독/조감독이 폰으로 롤 타임코드 + 구간 판정 + 메모를 기록하고
-FCPXML로 프리미어에 넘기는 도구. 서버·계정·DB 없음 — 데이터는 폰 localStorage에만 저장.
+Premiere XML로 편집 기록을 넘기는 도구. 서버·계정·DB 없음 — 로그는 폰 localStorage, 오디오는 메모리에만 저장.
 
 ## 라이브 URL
 
@@ -28,7 +40,8 @@ FCPXML로 프리미어에 넘기는 도구. 서버·계정·DB 없음 — 데이
 
 ```
 index.html   UI 전체 (메인 + 판정/보내기/설정 시트 3개)
-app.js       상태머신 + 렌더 + FCPXML/SRT/CSV export + 마이크 녹음 + Capacitor 브릿지
+app.js       상태머신 + 렌더 + XML/SRT/CSV export + 마이크 녹음 + Capacitor 브릿지
+export-xml.js FCP7 XMEML v4 생성
 style.css    모바일 전용 다크 UI (max-height:620px 컴팩트 모드 있음)
 sw.js        service worker — stale-while-revalidate (캐시 즉시응답 + 백그라운드 갱신)
 manifest.webmanifest  PWA 메타
@@ -62,7 +75,7 @@ www/                  sync 결과물, gitignore됨
 - `↩ 직전 구간 판정 취소` / 리스트에서 구간 줄 탭 → 판정 순환(OK→KEEP→NG) / 칩 탭 → 테이크 판정 순환(OK→HOLD→NG)
 - `계속 롤` = cutAt 버리고 복귀 (마이크 녹음도 유지)
 - 플래시: ROLL 시 `T##` 번호가 화면 가득 번쩍 + 1kHz 삑 — 카메라 파일 안 싱크 기준점
-- 싱크 오프셋: `S.syncOffset` 전역 + `t.offsetMs` 테이크별 → FCPXML `start=` 계산에 반영
+- 싱크 오프셋: `S.syncOffset` 전역 + `t.offsetMs` 테이크별 → XML 소스 in/out 및 부족 구간 gap 계산에 반영
 - 마이크: `S.mic` 켜면 롤 동안 MediaRecorder 녹음, 피크>베이스라인4배 시 `슬레이트 감지` 메모 자동.
   `audioBlobs`(Map)는 **메모리만 — 앱 재시작 시 소실** (export 전에 닫으면 안 됨)
 - 리셋: `micStop(num,false)`로 녹음 버림 + wake lock 해제
@@ -72,7 +85,7 @@ www/                  sync 결과물, gitignore됨
 
 - Playwright 390×844 / 375×667: 롤→구간→메모→CUT→판정→리스트 전 플로우, 콘솔 에러 0
 - 설정 시트가 작은 화면에서 스크롤됨 (sheetBox max-height:86dvh)
-- CUT 시트 시계는 cutAt에서 멈춤, 메인 시계는 계속 돔
+- 과거 CUT 실기: 시트 시계만 정지했던 버전. 현재 수정 후보는 메인 시계도 cutAt에서 멈춤
 - Vercel 배포 200, manifest 서빙 확인
 
 ## 알려진 한계 / 다음 할 일

@@ -19,13 +19,28 @@ function fresh() {
   };
 }
 let S;
-try { S = JSON.parse(localStorage.getItem(LS_KEY) || localStorage.getItem('offcut.v1') || localStorage.getItem('director.v1')) || fresh(); } catch { S = fresh(); }
-localStorage.removeItem('offcut.v1'); localStorage.removeItem('director.v1');
+try {
+  const raw = localStorage.getItem(LS_KEY) || localStorage.getItem('offcut.v1') || localStorage.getItem('director.v1');
+  const stored = JSON.parse(raw);
+  if (stored && !Array.isArray(stored.takes)) throw new Error('Invalid saved takes');
+  S = stored && Array.isArray(stored.takes) ? { ...fresh(), ...stored } : fresh();
+  // Write the replacement before deleting either legacy copy. A quota error must
+  // leave the previous session available on the next launch.
+  if (raw) {
+    localStorage.setItem(LS_KEY, JSON.stringify(S));
+    localStorage.removeItem('offcut.v1'); localStorage.removeItem('director.v1');
+  }
+} catch {
+  S = S || fresh();
+  alert('촬영 로그를 저장하지 못했습니다. 기존 기록은 보관했습니다. 저장 공간을 확인하고 CSV로 기록을 보내 주세요.');
+}
 S.takes.forEach(t => { if (t.status === 'KEEP') t.status = 'HOLD'; });
 if (S.syncOffset == null) S.syncOffset = 0;
 if (S.mic == null) S.mic = false;
-if (S.cur) delete S.cur.cutAt;
-const save = () => localStorage.setItem(LS_KEY, JSON.stringify(S));
+const save = () => {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(S)); }
+  catch { alert('촬영 로그를 저장하지 못했습니다. 앱을 닫기 전에 CSV로 기록을 보내 주세요.'); }
+};
 
 /* ---------- helpers ---------- */
 const pad = (n, l = 2) => String(n).padStart(l, '0');
@@ -83,58 +98,87 @@ document.addEventListener('visibilitychange', () => {
 /* ---------- mic recording + clap detect (싱크용) ---------- */
 let rec = null;                     // {mr, stream, ctx, chunks, ext, raf}
 const audioBlobs = new Map();       // takeNum → {blob, ext}  (메모리만 — 앱 재시작 시 소실)
+let micRequest = 0;
+let micPending = null;
+
+function releaseMic(r) {
+  cancelAnimationFrame(r.raf);
+  r.stream?.getTracks().forEach(t => t.stop());
+  if (r.ctx) r.ctx.close().catch(() => {});
+}
 
 async function micStart() {
-  if (!S.mic || rec) return;
+  if (!S.mic || rec || micPending || !S.cur || S.cur.cutAt != null) return;
+  const take = S.cur, request = ++micRequest;
+  micPending = request;
+  let stream, mr, ctx;
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    if (!S.cur) { stream.getTracks().forEach(t => t.stop()); return; }
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    if (request !== micRequest || S.cur !== take || take.cutAt != null || rec) {
+      stream.getTracks().forEach(t => t.stop()); return;
+    }
     const mime = MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4'
       : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
-    const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
     const chunks = [];
     mr.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
     mr.start(500);
     // 트랜지언트(박수/슬레이트) 감지: 순간 피크가 롤링 베이스라인의 4배 이상
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
     const an = ctx.createAnalyser(); an.fftSize = 1024;
     ctx.createMediaStreamSource(stream).connect(an);
     const buf = new Float32Array(an.fftSize);
     let base = 0.02, lastClap = -1e9;
     const tick = () => {
-      if (!rec || !S.cur) return;
+      if (rec !== recording || S.cur !== take) return;
+      if (take.cutAt != null) { recording.raf = requestAnimationFrame(tick); return; }
       an.getFloatTimeDomainData(buf);
       let peak = 0;
       for (let i = 0; i < buf.length; i++) peak = Math.max(peak, Math.abs(buf[i]));
-      const now = Date.now() - S.cur.startMs;
+      const now = Date.now() - take.startMs;
       base = base * 0.98 + peak * 0.02;
       if (peak > 0.5 && peak > base * 4 && now - lastClap > 400) {
         lastClap = now;
-        S.cur.memos.push({ ms: Math.round(now), text: '슬레이트 감지' });
+        take.memos.push({ ms: Math.round(now), text: '슬레이트 감지' });
         save(); render();
       }
-      rec.raf = requestAnimationFrame(tick);
+      recording.raf = requestAnimationFrame(tick);
     };
-    rec = { mr, stream, ctx, chunks, ext: mime.includes('mp4') ? 'm4a' : 'webm' };
+    const recording = { mr, stream, ctx, chunks, take, ext: mime.includes('mp4') ? 'm4a' : 'webm' };
+    rec = recording;
+    mr.onerror = () => {
+      recording.failed = true;
+      if (rec === recording) rec = null;
+      try { if (mr.state !== 'inactive') mr.stop(); } catch {}
+      releaseMic(recording);
+      alert('마이크 녹음이 중단됐습니다. 촬영 로그는 계속 기록할 수 있습니다.');
+    };
     rec.raf = requestAnimationFrame(tick);
-  } catch {}
+  } catch {
+    try { if (mr && mr.state !== 'inactive') mr.stop(); } catch {}
+    releaseMic({ stream, ctx });
+    if (request === micRequest) alert('마이크를 시작하지 못했습니다. 마이크 권한을 확인해 주세요. 촬영 로그는 계속 기록됩니다.');
+  } finally { if (micPending === request) micPending = null; }
 }
 
 function micStop(num, keep = true) {
+  micRequest++; micPending = null;
   if (!rec) return;
   const r = rec; rec = null;
   cancelAnimationFrame(r.raf);
   r.mr.onstop = () => {
     const blob = new Blob(r.chunks, { type: r.mr.mimeType || 'audio/mp4' });
-    if (keep && blob.size) audioBlobs.set(num, { blob, ext: r.ext });
-    r.stream.getTracks().forEach(t => t.stop());
-    r.ctx.close().catch(() => {});
+    if (keep && !r.failed && blob.size && S.takes.includes(r.take)) audioBlobs.set(r.take.num, { blob, ext: r.ext });
+    releaseMic(r);
   };
-  try { r.mr.stop(); } catch {}
+  try { r.mr.stop(); } catch { releaseMic(r); }
+  // Stop tracks immediately even when the final data/stop events are delayed.
+  r.stream.getTracks().forEach(t => t.stop());
 }
 
 /* ---------- roll / cut / ng ---------- */
 function roll() {
+  if (S.cur) return;
   buzz(30);
   const num = S.seq;
   S.cur = { num, fname: fileName(num), startMs: Date.now(), secStart: 0, sections: [], memos: [] };
@@ -152,7 +196,7 @@ function roll() {
 }
 
 function sectionMark(status) {
-  if (!S.cur) return;
+  if (!S.cur || S.cur.cutAt != null) return;
   buzz(25);
   const now = Date.now() - S.cur.startMs;
   if (now - S.cur.secStart < 300) return; // 0.3초 미만 구간 무시 (오타치 방지)
@@ -162,14 +206,14 @@ function sectionMark(status) {
 }
 
 function undoSection() {
-  if (!S.cur || !S.cur.sections.length) return;
+  if (!S.cur || S.cur.cutAt != null || !S.cur.sections.length) return;
   buzz(15);
   S.cur.secStart = S.cur.sections.pop().start;
   save(); render();
 }
 
 function addMemo() {
-  if (!S.cur) return;
+  if (!S.cur || S.cur.cutAt != null) return;
   const text = $('#memoInput').value.trim();
   if (!text) return;
   buzz(10);
@@ -180,7 +224,7 @@ function addMemo() {
 }
 
 function cut() {
-  if (!S.cur) return;
+  if (!S.cur || S.cur.cutAt != null) return;
   buzz(40);
   S.cur.cutAt = Date.now();
   save();
@@ -192,16 +236,14 @@ function cut() {
 
 function judge(secStatus, takeStatus) {
   if (!S.cur) return;
-  const end = S.cur.cutAt || Date.now();
+  const end = S.cur.cutAt ?? Date.now();
   const rel = end - S.cur.startMs;
   if (rel - S.cur.secStart >= 1) S.cur.sections.push({ start: S.cur.secStart, end: rel, status: secStatus });
   const secs = S.cur.sections;
   const auto = secs.every(s => s.status === 'NG') ? 'NG' : secs.some(s => s.status === 'OK') ? 'OK' : 'HOLD';
-  S.takes.push({
-    num: S.cur.num, fname: S.cur.fname,
-    startMs: S.cur.startMs, endMs: end,
-    status: takeStatus || auto, sections: secs, memos: S.cur.memos, note: $('#sheetNote').value.trim(),
-  });
+  Object.assign(S.cur, { endMs: end, status: takeStatus || auto, sections: secs,
+    memos: S.cur.memos.filter(m => m.ms >= 0 && m.ms < rel), note: $('#sheetNote').value.trim() });
+  S.takes.push(S.cur);
   micStop(S.cur.num);
   S.seq++; S.cur = null;
   save();
@@ -243,12 +285,12 @@ function render() {
     return;
   }
   list.innerHTML = [...S.takes].reverse().map(t => {
-    const note = t.note ? ` · ${t.note}` : '';
+    const note = t.note ? ` · ${xmlEsc(t.note)}` : '';
     const secN = (t.sections || []).length;
     const secInfo = secN > 1 ? `구간${secN}` : '';
     return `<div class="trow">
       <span class="tno">T${pad(t.num, 2)}</span>
-      <span class="tfile">${t.fname}</span>
+      <span class="tfile">${xmlEsc(t.fname)}</span>
       <span class="tdur">${durStr(t.endMs - t.startMs)}${note}</span>
       ${secInfo ? `<span class="ngbadge">${secInfo}</span>` : ''}
       <button class="chip ${t.status}" data-num="${t.num}">${TLBL[t.status] || t.status}</button>
@@ -267,7 +309,7 @@ function render() {
 setInterval(() => {
   const now = Date.now();
   if (S.cur) {
-    const rel = now - S.cur.startMs;
+    const rel = (S.cur.cutAt ?? now) - S.cur.startMs;
     $('#clock').textContent = msToTC(rel);
     $('#takeLabel').textContent = `REC · 테이크 ${S.cur.num} · ${S.cur.fname}`;
     $('#wallSub').textContent = `시작 ${clockStr(new Date(S.cur.startMs))}`;
@@ -291,60 +333,7 @@ setInterval(() => {
 }, 40);
 
 /* ---------- export ---------- */
-const FPS_RAT = { 23.976: '1001/24000s', 24: '1/24s', 25: '1/25s', 29.97: '1001/30000s', 30: '1/30s', 50: '1/50s', 59.94: '1001/60000s', 60: '1/60s' };
-const rat = ms => `${Math.round(ms)}/1000s`;
-
-function buildFCPXML() {
-  const fps = FPS_RAT[S.fps] || '1/25s';
-  const fmtName = `FFVideoFormat1080p${String(S.fps).replace('.', '')}`;
-  const total = S.takes.reduce((a, t) => a + (t.endMs - t.startMs), 0);
-  const date = new Date().toISOString().slice(0, 10);
-
-  const assets = S.takes.map(t =>
-    `    <asset id="a${t.num}" name="${xmlEsc(t.fname)}" start="0s" duration="${rat((t.offsetMs ?? S.syncOffset) + t.endMs - t.startMs)}" hasVideo="1" hasAudio="1" format="r1" audioSources="1" audioChannels="2" audioRate="48000">\n` +
-    `      <media-rep kind="original-media" src="file:///localhost/RELINK/${xmlEsc(t.fname)}"/>\n    </asset>`
-  ).join('\n');
-
-  let offset = 0;
-  const clips = S.takes.map(t => {
-    const dur = t.endMs - t.startMs;
-    const ofs = t.offsetMs ?? S.syncOffset;  // 플래시(앱 0초)의 소스 위치 — 카메라 선행 롤분
-    const secs = (t.sections && t.sections.length) ? t.sections : [{ start: 0, end: dur, status: t.status }];
-    return secs.map((sec, si) => {
-      const len = sec.end - sec.start;
-      let mk = '';
-      if (si === 0) mk += `\n        <marker start="0s" duration="1/1000s" value="T${pad(t.num, 2)} ${TLBL[t.status] || t.status}" note="${xmlEsc(t.note)}"/>`;
-      if (sec.status === 'NG') mk += `\n        <marker start="0s" duration="${rat(len)}" value="삭제 구간" note="${xmlEsc(t.note)}"/>`;
-      for (const m of (t.memos || [])) {
-        if (m.ms >= sec.start && m.ms < sec.end)
-          mk += `\n        <marker start="${rat(m.ms - sec.start)}" duration="1/1000s" value="${xmlEsc(m.text.slice(0, 60))}" note="${xmlEsc(m.text)}"/>`;
-      }
-      const c = `      <asset-clip ref="a${t.num}" offset="${rat(offset)}" name="T${pad(t.num, 2)}.${si + 1} ${LBL[sec.status] || sec.status}" start="${rat(Math.max(0, sec.start + ofs))}" duration="${rat(len)}" format="r1" tcFormat="NDF" audioRole="dialogue">${mk}\n      </asset-clip>`;
-      offset += len;
-      return c;
-    }).join('\n');
-  }).join('\n');
-
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE fcpxml>
-<fcpxml version="1.9">
-  <resources>
-    <format id="r1" name="${fmtName}" frameDuration="${fps}" width="1920" height="1080" colorSpace="1-1-1 (Rec. 709)"/>
-${assets}
-  </resources>
-  <library>
-    <event name="offcut-director ${date}">
-      <project name="${xmlEsc(S.project)} 촬영로그 ${date}">
-        <sequence format="r1" duration="${rat(total)}" tcStart="0s" tcFormat="NDF" audioLayout="stereo" audioRate="48k">
-          <spine>
-${clips}
-          </spine>
-        </sequence>
-      </project>
-    </event>
-  </library>
-</fcpxml>`;
-}
+function buildPremiereXML() { return window.OFFCUT_XML.build(S); }
 
 function srtT(ms) {
   const h = Math.floor(ms / 3600000), m = Math.floor(ms / 60000) % 60,
@@ -352,15 +341,29 @@ function srtT(ms) {
   return `${pad(h)}:${pad(m)}:${pad(s)},${pad(mm, 3)}`;
 }
 function buildSRT() {
-  let i = 0, out = '', offset = 0;
+  let i = 0, out = '', offsetFrames = 0;
+  const fps = window.OFFCUT_XML.frameRate(S.fps).actual;
   for (const t of S.takes) {
-    const dur = t.endMs - t.startMs;
-    (t.memos || []).forEach((m, idx) => {
-      const next = t.memos[idx + 1];
-      const end = next ? next.ms : Math.min(m.ms + 4000, dur);
-      out += `${++i}\n${srtT(offset + m.ms)} --> ${srtT(offset + end)}\n[T${pad(t.num, 2)}] ${m.text}\n\n`;
+    const dur = Math.round(t.endMs - t.startMs);
+    if (!Number.isFinite(dur) || dur <= 0) continue;
+    const takeFrames = Math.max(1, Math.round(dur * fps / 1000));
+    const cueLimit = Math.min(dur, takeFrames * 1000 / fps);
+    const offset = offsetFrames * 1000 / fps;
+    const grouped = new Map();
+    for (const m of t.memos || []) {
+      const at = Math.round(Number(m.ms));
+      if (!Number.isFinite(at) || at < 0 || at >= cueLimit) continue;
+      grouped.set(at, [...(grouped.get(at) || []), m.text]);
+    }
+    const memos = [...grouped].sort((a, b) => a[0] - b[0]).map(([ms, texts]) => ({ ms, text: texts.join('\n') }));
+    memos.forEach((m, idx) => {
+      const next = memos[idx + 1];
+      const end = next ? next.ms : Math.min(m.ms + 4000, cueLimit);
+      const startMs = Math.floor(offset + m.ms), endMs = Math.floor(offset + end);
+      if (endMs <= startMs) return;
+      out += `${++i}\n${srtT(startMs)} --> ${srtT(endMs)}\n[T${pad(t.num, 2)}] ${m.text}\n\n`;
     });
-    offset += dur;
+    offsetFrames += takeFrames;
   }
   return out;
 }
@@ -378,7 +381,7 @@ function buildCSV() {
 
 async function sendFile(name, text, mime) {
   if (CAP && CAP.Filesystem && CAP.Share) {
-    await CAP.Filesystem.writeFile({ path: name, data: text, directory: 'CACHE', recursive: true });
+    await CAP.Filesystem.writeFile({ path: name, data: text, directory: 'CACHE', recursive: true, encoding: 'utf8' });
     const { uri } = await CAP.Filesystem.getUri({ path: name, directory: 'CACHE' });
     await CAP.Share.share({ title: name, url: uri });
     return;
@@ -393,7 +396,15 @@ async function sendFile(name, text, mime) {
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
 
-const safeName = () => `${S.project.replace(/\s+/g, '_')}_촬영로그_${new Date().toISOString().slice(0, 10)}`;
+async function exportSafely(action) {
+  try { await action(); }
+  catch (error) {
+    if (error?.name === 'ExportValidationError') alert(error.message);
+    else if (error?.name !== 'AbortError') alert('파일을 보내지 못했습니다. 저장 공간과 공유 권한을 확인하고 다시 시도해 주세요.');
+  }
+}
+
+const safeName = () => `${S.project.replace(/[\s/\\:*?"<>|\u0000-\u001f]+/g, '_')}_촬영로그_${new Date().toISOString().slice(0, 10)}`;
 
 const blobToB64 = blob => new Promise((res, rej) => {
   const r = new FileReader();
@@ -420,7 +431,7 @@ document.querySelectorAll('.jbtn').forEach(b => b.addEventListener('click', () =
 $('#btnUndoSec').addEventListener('click', undoSection);
 $('#btnCut').addEventListener('click', cut);
 $('#sheetCancel').addEventListener('click', () => {
-  if (S.cur) { delete S.cur.cutAt; save(); }
+  if (S.cur) { delete S.cur.cutAt; save(); micStart(); }
   $('#sheet').classList.add('hidden');
 });
 $('#sheetHold').addEventListener('click', () => { buzz(30); judge('KEEP', 'HOLD'); });
@@ -457,6 +468,9 @@ $('#takeList').addEventListener('click', e => {
       const later = S.takes.filter(x => x.num > num);
       if ((later.length || num === S.seq - 1) && confirm('이 롤을 카메라가 안 찍었나요? (맞으면 이후 테이크 번호·파일명을 하나씩 당깁니다)')) {
         later.forEach(t => { t.num--; t.fname = fileName(t.num); });
+        if (S.cur && S.cur.num > num) { S.cur.num--; S.cur.fname = fileName(S.cur.num); }
+        const renumbered = [...audioBlobs].map(([n, value]) => [n > num ? n - 1 : n, value]);
+        audioBlobs.clear(); renumbered.forEach(([n, value]) => audioBlobs.set(n, value));
         S.seq--;
       }
       save(); render();
@@ -471,20 +485,20 @@ $('#expCancel').addEventListener('click', () => $('#exportSheet').classList.add(
   const el = $(id);
   el.addEventListener('click', e => { if (e.target === el) el.classList.add('hidden'); });
 });
-$('#expFcp').addEventListener('click', () => {
+$('#expFcp').addEventListener('click', () => exportSafely(async () => {
   if (!S.takes.length) return alert('기록된 테이크가 없습니다.');
-  sendFile(safeName() + '.fcpxml', buildFCPXML(), 'application/xml');
-});
-$('#expSrt').addEventListener('click', () => {
+  await sendFile(safeName() + '.xml', buildPremiereXML(), 'application/xml');
+}));
+$('#expSrt').addEventListener('click', () => exportSafely(async () => {
   const srt = buildSRT();
   if (!srt) return alert('기록된 메모가 없습니다.');
-  sendFile(safeName() + '.srt', srt, 'application/x-subrip');
-});
-$('#expCsv').addEventListener('click', () => {
+  await sendFile(safeName() + '.srt', srt, 'application/x-subrip');
+}));
+$('#expCsv').addEventListener('click', () => exportSafely(async () => {
   if (!S.takes.length) return alert('기록된 테이크가 없습니다.');
-  sendFile(safeName() + '.csv', buildCSV(), 'text/csv');
-});
-$('#expAud').addEventListener('click', async () => {
+  await sendFile(safeName() + '.csv', buildCSV(), 'text/csv');
+}));
+$('#expAud').addEventListener('click', () => exportSafely(async () => {
   if (!audioBlobs.size) return alert('녹음된 오디오가 없습니다. (설정에서 마이크 녹음을 켜고 롤하세요)');
   const files = [...audioBlobs.entries()].sort((a, b) => a[0] - b[0])
     .map(([n, { blob, ext }]) => ({ name: `T${pad(n, 2)}.${ext}`, blob }));
@@ -505,7 +519,7 @@ $('#expAud').addEventListener('click', async () => {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(f); a.download = f.name; a.click();
   }, i * 400));
-});
+}));
 
 $('#btnSettings').addEventListener('click', () => {
   $('#setProject').value = S.project;
@@ -542,5 +556,10 @@ $('#setReset').addEventListener('click', () => {
 });
 
 render();
+if (S.cur && S.cur.cutAt != null) {
+  $('#sheetTitle').textContent = `테이크 ${S.cur.num} 종료 — 마지막 구간 판정`;
+  $('#sheetClock').textContent = msToTC(S.cur.cutAt - S.cur.startMs);
+  $('#sheet').classList.remove('hidden');
+}
 if (S.cur && S.mic) micStart();   // 롤 중 앱 재시작 → 녹음 재개 (권한 물어볼 수 있음)
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

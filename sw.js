@@ -1,5 +1,5 @@
-const CACHE = 'offcut-director-v1';
-const ASSETS = ['.', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icon.svg', 'icon-512.png', 'icon-180.png'];
+const CACHE = 'offcut-director-v2';
+const ASSETS = ['.', 'index.html', 'style.css', 'app.js', 'export-xml.js', 'manifest.webmanifest', 'icon.svg', 'icon-512.png', 'icon-180.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
   self.skipWaiting();

@@ -74,9 +74,9 @@
 <div id="exportSheet" class="sheet hidden">
   <div class="sheetBox">
     <div class="sheetTitle">편집으로 보내기</div>
-    <p class="hint">FCPXML을 프리미어에 임포트하면 테이크별 클립 + 삭제 마커가 타임라인에 뜹니다. 카메라 파일명 패턴이 맞으면 자동 릴링크됩니다.</p>
+    <p class="hint">Premiere용 XML을 가져온 뒤 카메라 원본 파일을 연결해 주세요. 1080p 시퀀스에 판정한 구간과 메모 마커를 배치합니다. 삭제 판정 구간도 마커와 함께 남습니다. 프레임레이트는 카메라와 같게 설정해 주세요.</p>
     <div class="expBtns">
-      <button id="expFcp" class="expBtn primary">FCPXML 보내기/저장</button>
+      <button id="expFcp" class="expBtn primary">Premiere XML 보내기/저장</button>
       <button id="expSrt" class="expBtn">SRT 자막 보내기/저장</button>
       <button id="expCsv" class="expBtn">CSV 보내기/저장</button>
       <button id="expAud" class="expBtn">테이크 오디오 보내기</button>
@@ -114,11 +114,13 @@
     <label class="fld chk"><input type="checkbox" id="setSlate"> ROLL 시작 시 화면 플래시 + 삑 소리 (슬레이트 대용)</label>
     <label class="fld chk"><input type="checkbox" id="setSound"> 버튼 진동/사운드</label>
     <label class="fld chk"><input type="checkbox" id="setMic"> 롤 중 마이크 녹음 + 박수/슬레이트 감지 (싱크용 오디오)</label>
+    <p class="hint">녹음 파일은 앱을 닫으면 사라집니다. 촬영 후 오디오를 보내 주세요. CUT 판정을 기다리는 동안에도 녹음이 이어져 로그 길이보다 길 수 있습니다.</p>
     <button id="setClose" class="sheetCancel">닫기</button>
     <button id="setReset" class="danger">로그 전체 삭제</button>
   </div>
 </div>
 
+<script src="export-xml.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
