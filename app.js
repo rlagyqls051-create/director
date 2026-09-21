@@ -11,6 +11,7 @@ function fresh() {
     startNo: 1,
     slate: true,
     sound: true,
+    syncOffset: 0,        // ms — 플래시(app 0초)가 카메라 파일 안에서 밀린 시간 (카메라 선행 롤 = 양수)
     takes: [],          // {num, fname, startMs, endMs, status, sections:[{start,end,status}], memos:[{ms,text}], note}
     seq: 1,
     cur: null,          // rolling take: {num, fname, startMs, secStart, sections:[], memos:[]}
@@ -20,6 +21,7 @@ let S;
 try { S = JSON.parse(localStorage.getItem(LS_KEY) || localStorage.getItem('offcut.v1') || localStorage.getItem('director.v1')) || fresh(); } catch { S = fresh(); }
 localStorage.removeItem('offcut.v1'); localStorage.removeItem('director.v1');
 S.takes.forEach(t => { if (t.status === 'KEEP') t.status = 'HOLD'; });
+if (S.syncOffset == null) S.syncOffset = 0;
 if (S.cur) delete S.cur.cutAt;
 const save = () => localStorage.setItem(LS_KEY, JSON.stringify(S));
 
@@ -83,6 +85,7 @@ function roll() {
   S.cur = { num, fname: fileName(num), startMs: Date.now(), secStart: 0, sections: [], memos: [] };
   save();
   if (S.slate) {
+    $('#flashNum').textContent = `T${pad(num, 2)}`;
     $('#flash').classList.add('on');
     setTimeout(() => $('#flash').classList.remove('on'), 450);
     beep();
@@ -192,6 +195,9 @@ function render() {
       <button class="chip ${t.status}" data-num="${t.num}">${TLBL[t.status] || t.status}</button>
       <button class="tdel" data-del="${t.num}">×</button>
     </div>` +
+    `<div class="mline">└ 플래시 오프셋 <b>${(((t.offsetMs ?? S.syncOffset)) / 1000).toFixed(1)}s</b>` +
+      `<button class="ofsbtn" data-ofs="-500" data-num="${t.num}">−0.5</button>` +
+      `<button class="ofsbtn" data-ofs="500" data-num="${t.num}">+0.5</button></div>` +
     (t.sections || []).map((s, i) =>
       `<div class="mline sec" data-tnum="${t.num}" data-si="${i}">└ ${durStr(s.start)}–${durStr(s.end)} <b class="seclbl ${s.status}">${LBL[s.status] || s.status}</b></div>`).join('') +
     (t.memos || []).map(m => `<div class="mline">└ ${durStr(m.ms)} — ${xmlEsc(m.text)}</div>`).join('');
@@ -236,13 +242,14 @@ function buildFCPXML() {
   const date = new Date().toISOString().slice(0, 10);
 
   const assets = S.takes.map(t =>
-    `    <asset id="a${t.num}" name="${xmlEsc(t.fname)}" start="0s" duration="${rat(t.endMs - t.startMs)}" hasVideo="1" hasAudio="1" format="r1" audioSources="1" audioChannels="2" audioRate="48000">\n` +
+    `    <asset id="a${t.num}" name="${xmlEsc(t.fname)}" start="0s" duration="${rat((t.offsetMs ?? S.syncOffset) + t.endMs - t.startMs)}" hasVideo="1" hasAudio="1" format="r1" audioSources="1" audioChannels="2" audioRate="48000">\n` +
     `      <media-rep kind="original-media" src="file:///localhost/RELINK/${xmlEsc(t.fname)}"/>\n    </asset>`
   ).join('\n');
 
   let offset = 0;
   const clips = S.takes.map(t => {
     const dur = t.endMs - t.startMs;
+    const ofs = t.offsetMs ?? S.syncOffset;  // 플래시(앱 0초)의 소스 위치 — 카메라 선행 롤분
     const secs = (t.sections && t.sections.length) ? t.sections : [{ start: 0, end: dur, status: t.status }];
     return secs.map((sec, si) => {
       const len = sec.end - sec.start;
@@ -253,7 +260,7 @@ function buildFCPXML() {
         if (m.ms >= sec.start && m.ms < sec.end)
           mk += `\n        <marker start="${rat(m.ms - sec.start)}" duration="1/1000s" value="${xmlEsc(m.text.slice(0, 60))}" note="${xmlEsc(m.text)}"/>`;
       }
-      const c = `      <asset-clip ref="a${t.num}" offset="${rat(offset)}" name="T${pad(t.num, 2)}.${si + 1} ${LBL[sec.status] || sec.status}" start="${rat(sec.start)}" duration="${rat(len)}" format="r1" tcFormat="NDF" audioRole="dialogue">${mk}\n      </asset-clip>`;
+      const c = `      <asset-clip ref="a${t.num}" offset="${rat(offset)}" name="T${pad(t.num, 2)}.${si + 1} ${LBL[sec.status] || sec.status}" start="${rat(Math.max(0, sec.start + ofs))}" duration="${rat(len)}" format="r1" tcFormat="NDF" audioRole="dialogue">${mk}\n      </asset-clip>`;
       offset += len;
       return c;
     }).join('\n');
@@ -300,10 +307,10 @@ function buildSRT() {
 }
 
 function buildCSV() {
-  const rows = [['take', 'clip_file', 'status', 'start_time', 'end_time', 'duration', 'sections', 'note', 'memos']];
+  const rows = [['take', 'clip_file', 'sync_offset_s', 'status', 'start_time', 'end_time', 'duration', 'sections', 'note', 'memos']];
   for (const t of S.takes) {
     const segs = (t.sections || []).map(s => `${durStr(s.start)}-${durStr(s.end)} ${LBL[s.status] || s.status}`).join(' | ');
-    rows.push([t.num, t.fname, TLBL[t.status] || t.status, clockStr(new Date(t.startMs)), clockStr(new Date(t.endMs)),
+    rows.push([t.num, t.fname, ((t.offsetMs ?? S.syncOffset) / 1000), TLBL[t.status] || t.status, clockStr(new Date(t.startMs)), clockStr(new Date(t.endMs)),
       durStr(t.endMs - t.startMs), segs, t.note,
       (t.memos || []).map(m => `${durStr(m.ms)} ${m.text}`).join(' | ')]);
   }
@@ -359,6 +366,12 @@ $('#takeList').addEventListener('click', e => {
   const chip = e.target.closest('.chip');
   const del = e.target.closest('[data-del]');
   const secEl = e.target.closest('.mline.sec');
+  const ofsB = e.target.closest('.ofsbtn');
+  if (ofsB) {
+    const t = S.takes.find(x => x.num == ofsB.dataset.num);
+    if (t) { t.offsetMs = (t.offsetMs ?? S.syncOffset) + +ofsB.dataset.ofs; save(); render(); }
+    return;
+  }
   if (secEl) {
     const t = S.takes.find(x => x.num == secEl.dataset.tnum);
     const s = t && t.sections[+secEl.dataset.si];
@@ -405,6 +418,7 @@ $('#btnSettings').addEventListener('click', () => {
   $('#setFps').value = String(S.fps);
   $('#setPrefix').value = S.prefix;
   $('#setStartNo').value = S.startNo;
+  $('#setSync').value = S.syncOffset / 1000;
   $('#setSlate').checked = S.slate;
   $('#setSound').checked = S.sound;
   $('#setSheet').classList.remove('hidden');
@@ -416,6 +430,7 @@ $('#setClose').addEventListener('click', () => {
   S.startNo = +$('#setStartNo').value || 1;
   S.slate = $('#setSlate').checked;
   S.sound = $('#setSound').checked;
+  S.syncOffset = (+$('#setSync').value || 0) * 1000;
   save(); render();
   $('#setSheet').classList.add('hidden');
 });

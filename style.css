@@ -8,8 +8,9 @@ body {
   user-select:none; -webkit-user-select:none;
 }
 
-#flash { position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:99; transition:opacity .08s; }
+#flash { position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:99; transition:opacity .08s; display:flex; align-items:center; justify-content:center; }
 #flash.on { opacity:1; }
+#flashNum { font-size:38vw; font-weight:900; color:#000; letter-spacing:-.02em; }
 
 header {
   display:flex; justify-content:space-between; align-items:center;
@@ -70,6 +71,7 @@ body.rolling #clock { font-weight:600; }
 .seclbl.OK { color:#409cff; }
 .seclbl.KEEP { color:#30d158; }
 .seclbl.NG { color:#ff6b62; }
+.ofsbtn { background:#2c2c2e; color:#eee; border:none; border-radius:6px; padding:1px 9px; font-size:12px; margin-left:6px; }
 
 /* timeline strip */
 #tlWrap {
