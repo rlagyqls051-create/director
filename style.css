@@ -63,6 +63,12 @@ body.rolling #clock { font-weight:600; }
 .mrow { display:flex; gap:8px; font-size:12px; padding:3px 4px; color:#bbb; font-variant-numeric:tabular-nums; }
 .mrow .mtc { color:#0a84ff; font-weight:700; flex:none; }
 .mline { font-size:11px; color:#777; padding:1px 8px 7px 52px; font-variant-numeric:tabular-nums; }
+.mline.sec { cursor:pointer; }
+.mline.sec:active { background:#1c1c1e; }
+.seclbl { font-weight:700; }
+.seclbl.OK { color:#409cff; }
+.seclbl.KEEP { color:#30d158; }
+.seclbl.NG { color:#ff6b62; }
 
 /* timeline strip */
 #tlWrap {

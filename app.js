@@ -185,8 +185,8 @@ function render() {
       <button class="chip ${t.status}" data-num="${t.num}">${TLBL[t.status] || t.status}</button>
       <button class="tdel" data-del="${t.num}">×</button>
     </div>` +
-    (t.sections || []).map((s, i) => s.status !== 'OK' || secN > 1
-      ? `<div class="mline">└ ${durStr(s.start)}–${durStr(s.end)} ${LBL[s.status] || s.status}</div>` : '').join('') +
+    (t.sections || []).map((s, i) =>
+      `<div class="mline sec" data-tnum="${t.num}" data-si="${i}">└ ${durStr(s.start)}–${durStr(s.end)} <b class="seclbl ${s.status}">${LBL[s.status] || s.status}</b></div>`).join('') +
     (t.memos || []).map(m => `<div class="mline">└ ${durStr(m.ms)} — ${xmlEsc(m.text)}</div>`).join('');
   }).join('');
 }
@@ -345,6 +345,13 @@ document.querySelectorAll('.judge').forEach(b => b.addEventListener('click', () 
 $('#takeList').addEventListener('click', e => {
   const chip = e.target.closest('.chip');
   const del = e.target.closest('[data-del]');
+  const secEl = e.target.closest('.mline.sec');
+  if (secEl) {
+    const t = S.takes.find(x => x.num == secEl.dataset.tnum);
+    const s = t && t.sections[+secEl.dataset.si];
+    if (s) { s.status = s.status === 'OK' ? 'KEEP' : s.status === 'KEEP' ? 'NG' : 'OK'; save(); render(); }
+    return;
+  }
   if (chip) {
     const t = S.takes.find(x => x.num == chip.dataset.num);
     t.status = t.status === 'OK' ? 'HOLD' : t.status === 'HOLD' ? 'NG' : 'OK';
