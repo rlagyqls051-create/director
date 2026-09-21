@@ -1,6 +1,6 @@
 {
-  "name": "director — 촬영 로거",
-  "short_name": "director",
+  "name": "offcut-director — 촬영 로거",
+  "short_name": "offcut-director",
   "start_url": ".",
   "display": "standalone",
   "background_color": "#0a0a0a",

@@ -1,9 +1,9 @@
-# director — 촬영 로거 (take logger)
+# offcut-director — 촬영 로거 (take logger)
 
 소규모 촬영(인터뷰 등)에서 감독/조연출이 폰으로 **롤 타임코드 + 구간 판정 + 메모**를 기록하고,
 결과를 **프리미어 프로로 바로 넘기는** PWA.
 
-배포: https://offcut-xi.vercel.app (구 이름 offcut으로 배포됨. 재배포 시 `vercel --prod --name director` → 새 URL)
+배포: https://offcut-xi.vercel.app (구 이름 offcut으로 배포됨. 재배포 시 `vercel --prod --name offcut-director` → 새 URL)
 
 ## 사용 흐름
 
@@ -31,7 +31,7 @@
 | `style.css` | 다크 모바일 UI |
 | `manifest.webmanifest`, `sw.js`, `icon*` | PWA (오프라인 캐시, 홈화면 설치) |
 
-## 데이터 모델 (localStorage `director.v1`, 구 `offcut.v1`에서 자동 이관)
+## 데이터 모델 (localStorage `offcut-director.v1`, 구 `offcut.v1`에서 자동 이관)
 
 ```js
 S = {
@@ -52,7 +52,7 @@ S = {
 
 ```bash
 python3 -m http.server 8321   # 로컬 테스트
-vercel --prod --name director   # 배포 (폴더명에 한글 있어서 --name 필수)
+vercel --prod --name offcut-director   # 배포 (폴더명에 한글 있어서 --name 필수)
 ```
 
 ## 향후: 카메라 직접 연동 (검색해둔 것)
