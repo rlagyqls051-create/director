@@ -1,6 +1,6 @@
 'use strict';
 const $ = s => document.querySelector(s);
-const LS_KEY = 'offcut.v1';
+const LS_KEY = 'director.v1';
 
 /* ---------- state ---------- */
 function fresh() {
@@ -17,7 +17,8 @@ function fresh() {
   };
 }
 let S;
-try { S = JSON.parse(localStorage.getItem(LS_KEY)) || fresh(); } catch { S = fresh(); }
+try { S = JSON.parse(localStorage.getItem(LS_KEY) || localStorage.getItem('offcut.v1')) || fresh(); } catch { S = fresh(); }
+localStorage.removeItem('offcut.v1');
 const save = () => localStorage.setItem(LS_KEY, JSON.stringify(S));
 
 /* ---------- helpers ---------- */
@@ -253,7 +254,7 @@ function buildFCPXML() {
 ${assets}
   </resources>
   <library>
-    <event name="offcut ${date}">
+    <event name="director ${date}">
       <project name="${xmlEsc(S.project)} 촬영로그 ${date}">
         <sequence format="r1" duration="${rat(total)}" tcStart="0s" tcFormat="NDF" audioLayout="stereo" audioRate="48k">
           <spine>
