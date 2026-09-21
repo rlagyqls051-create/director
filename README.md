@@ -3,7 +3,8 @@
 소규모 촬영(인터뷰 등)에서 감독/조연출이 폰으로 **롤 타임코드 + 구간 판정 + 메모**를 기록하고,
 결과를 **프리미어 프로로 바로 넘기는** PWA.
 
-배포: https://offcut-xi.vercel.app (구 이름 offcut으로 배포됨. 재배포 시 `vercel --prod --name offcut-director` → 새 URL)
+배포: https://rlagyqls051-create.github.io/offcut-director/ (GitHub Pages, main push 시 자동 배포)
+구 배포: https://offcut-xi.vercel.app (구 이름 offcut)
 
 ## 사용 흐름
 
@@ -55,7 +56,7 @@ S = {
 
 ```bash
 python3 -m http.server 8321   # 로컬 테스트
-vercel --prod --name offcut-director   # 배포 (폴더명에 한글 있어서 --name 필수)
+git push                       # 배포 — GitHub Pages가 main에서 자동 발행
 ```
 
 ## 향후: 카메라 직접 연동 (검색해둔 것)
