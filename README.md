@@ -59,6 +59,30 @@ python3 -m http.server 8321   # 로컬 테스트
 git push                       # 배포 — GitHub Pages가 main에서 자동 발행
 ```
 
+## 네이티브 앱 (Capacitor)
+
+웹 코드는 루트 파일이 원본 — `npm run sync`가 `www/`로 복사 후 `cap sync` 실행.
+네이티브에서는 `navigator.share` 대신 Share/Filesystem 플러그인, 진동은 Haptics,
+wakeLock은 KeepAwake로 자동 전환 (`app.js`의 `CAP` 분기).
+
+### 맥에서 빌드
+
+```bash
+git clone https://github.com/rlagyqls051-create/offcut-director.git
+cd offcut-director && npm install && npm run sync
+
+# iOS — Xcode 필요, CocoaPods 없으면: sudo gem install cocoapods
+npx cap open ios     # Xcode에서 Signing 팀 지정 → 기기 연결 후 Run
+                     # 스토어: Product → Archive → App Store Connect 업로드
+
+# Android — Android Studio 필요
+npx cap open android # Studio에서 기기 Run / Build → Generate Signed AAB → Play Console
+```
+
+- 무료 Apple ID 서명은 7일마다 만료 → 개인 사용도 $99/년 계정이 편함
+- 데이터는 localStorage에 로컬 저장 (웹뷰 안이라 앱 삭제 전까지 유지)
+- 네이티브 아이콘은 현재 Capacitor 기본값 — 실제 아이콘은 `npx @capacitor/assets`로 생성 가능
+
 ## 향후: 카메라 직접 연동 (검색해둔 것)
 
 - **Canon CCAPI**: Wi-Fi로 카메라가 HTTP REST 서버가 됨. `/ccapi/event/polling`으로

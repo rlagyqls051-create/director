@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">offcut-director</string>
+    <string name="title_activity_main">offcut-director</string>
+    <string name="package_name">com.offcut.director</string>
+    <string name="custom_url_scheme">com.offcut.director</string>
+</resources>

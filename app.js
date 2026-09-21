@@ -40,10 +40,16 @@ const durStr = ms => {
 };
 const clockStr = t => `${pad(t.getHours())}:${pad(t.getMinutes())}:${pad(t.getSeconds())}`;
 const fileName = num => `${S.prefix}${pad(S.startNo + num - 1, 4)}.MP4`;
-const buzz = p => { if (S.sound && navigator.vibrate) navigator.vibrate(p); };
+const buzz = p => {
+  if (!S.sound) return;
+  if (CAP && CAP.Haptics) { CAP.Haptics.impact({ style: p >= 40 ? 'heavy' : p >= 25 ? 'medium' : 'light' }).catch(() => {}); return; }
+  if (navigator.vibrate) navigator.vibrate(p);
+};
 const xmlEsc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const LBL = { OK: '편집에쓰자', KEEP: '특이사항', NG: '삭제' };           // 구간 판정
 const TLBL = { OK: '편집에쓰자', HOLD: '보류', NG: '삭제' };             // 테이크 판정
+// Capacitor 네이티브 플러그인 (웹/PWA에서는 null → 기존 웹 경로로 폴백)
+const CAP = (window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform()) ? Capacitor.Plugins : null;
 
 function beep() {
   if (!S.sound) return;
@@ -61,6 +67,7 @@ function beep() {
 let wakeLock = null;
 async function setWake(on) {
   try {
+    if (CAP && CAP.KeepAwake) { on ? await CAP.KeepAwake.keepAwake() : await CAP.KeepAwake.allowSleep(); return; }
     if (on && !wakeLock && 'wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
     if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
   } catch {}
@@ -304,6 +311,12 @@ function buildCSV() {
 }
 
 async function sendFile(name, text, mime) {
+  if (CAP && CAP.Filesystem && CAP.Share) {
+    await CAP.Filesystem.writeFile({ path: name, data: text, directory: 'CACHE', recursive: true });
+    const { uri } = await CAP.Filesystem.getUri({ path: name, directory: 'CACHE' });
+    await CAP.Share.share({ title: name, url: uri });
+    return;
+  }
   const f = new File([text], name, { type: mime });
   if (navigator.canShare && navigator.canShare({ files: [f] })) {
     try { await navigator.share({ files: [f], title: name }); return; } catch (e) { if (e.name === 'AbortError') return; }

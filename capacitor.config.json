@@ -1,0 +1,9 @@
+{
+  "appId": "com.offcut.director",
+  "appName": "offcut-director",
+  "webDir": "www",
+  "backgroundColor": "#0a0a0a",
+  "ios": {
+    "contentInset": "never"
+  }
+}
