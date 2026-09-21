@@ -4,6 +4,7 @@ body {
   background:#0a0a0a; color:#eee;
   font-family:-apple-system,'SF Pro','Pretendard',system-ui,sans-serif;
   display:flex; flex-direction:column; height:100dvh; overflow:hidden;
+  overscroll-behavior:none;
   user-select:none; -webkit-user-select:none;
 }
 
