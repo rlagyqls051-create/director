@@ -11,7 +11,9 @@
 2. 롤 도중 `편집에쓰자 / 특이사항 / 삭제` — "마지막 마크 ~ 지금" 구간을 판정하고 새 구간 시작 (카메라 안 끊음)
    - `↩ 직전 구간 판정 취소` 있음
    - 메모 입력바 — 지문/내용을 채팅처럼 기록, 타임스탬프 자동
-3. `CUT` — 마지막 구간 판정 + 노트 → 테이크 저장 (테이크 판정은 구간에서 자동 도출)
+3. `CUT` — CUT 누른 시점에서 타임코드 정지 → 마지막 구간 판정 + 노트 → 테이크 저장.
+   테이크 판정은 구간에서 자동 도출 (전부 삭제→삭제, 편집에쓰자 하나라도→편집에쓰자, 나머지→보류).
+   `테이크 보류` 버튼으로 판정 유보 가능, `계속 롤`은 테이크 안 끝내고 이어서 진행
 4. `보내기` — FCPXML / SRT / CSV, iOS 공유시트 → AirDrop으로 맥 전달
 
 ## 프리미어 연동
@@ -36,11 +38,11 @@
 ```js
 S = {
   project, fps, prefix, startNo, slate, sound,
-  takes: [{ num, fname, startMs, endMs, status,
-            sections: [{start,end,status}],   // status: OK(편집에쓰자)|KEEP(특이사항)|NG(삭제)
+  takes: [{ num, fname, startMs, endMs, status,  // take status: OK(편집에쓰자)|HOLD(보류)|NG(삭제)
+            sections: [{start,end,status}],      // section status: OK(편집에쓰자)|KEEP(특이사항)|NG(삭제)
             memos: [{ms,text}], note }],
   seq,                        // 다음 테이크 번호
-  cur,                        // 롤 중 테이크 (앱 재시작 시 복원됨)
+  cur,                        // 롤 중 테이크 {num,fname,startMs,secStart,cutAt?,sections,memos} (앱 재시작 시 복원됨)
 }
 ```
 

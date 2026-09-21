@@ -19,6 +19,8 @@ function fresh() {
 let S;
 try { S = JSON.parse(localStorage.getItem(LS_KEY) || localStorage.getItem('offcut.v1') || localStorage.getItem('director.v1')) || fresh(); } catch { S = fresh(); }
 localStorage.removeItem('offcut.v1'); localStorage.removeItem('director.v1');
+S.takes.forEach(t => { if (t.status === 'KEEP') t.status = 'HOLD'; });
+if (S.cur) delete S.cur.cutAt;
 const save = () => localStorage.setItem(LS_KEY, JSON.stringify(S));
 
 /* ---------- helpers ---------- */
@@ -40,7 +42,8 @@ const clockStr = t => `${pad(t.getHours())}:${pad(t.getMinutes())}:${pad(t.getSe
 const fileName = num => `${S.prefix}${pad(S.startNo + num - 1, 4)}.MP4`;
 const buzz = p => { if (S.sound && navigator.vibrate) navigator.vibrate(p); };
 const xmlEsc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const LBL = { OK: '편집에쓰자', KEEP: '특이사항', NG: '삭제' };
+const LBL = { OK: '편집에쓰자', KEEP: '특이사항', NG: '삭제' };           // 구간 판정
+const TLBL = { OK: '편집에쓰자', HOLD: '보류', NG: '삭제' };             // 테이크 판정
 
 function beep() {
   if (!S.sound) return;
@@ -113,21 +116,24 @@ function addMemo() {
 function cut() {
   if (!S.cur) return;
   buzz(40);
+  S.cur.cutAt = Date.now();
+  save();
   $('#sheetTitle').textContent = `테이크 ${S.cur.num} 종료 — 마지막 구간 판정`;
   $('#sheetNote').value = '';
+  $('#sheetClock').textContent = msToTC(S.cur.cutAt - S.cur.startMs);
   $('#sheet').classList.remove('hidden');
 }
 
-function judge(status) {
-  const end = Date.now();
+function judge(secStatus, takeStatus) {
+  const end = S.cur.cutAt || Date.now();
   const rel = end - S.cur.startMs;
-  if (rel - S.cur.secStart >= 1) S.cur.sections.push({ start: S.cur.secStart, end: rel, status });
+  if (rel - S.cur.secStart >= 1) S.cur.sections.push({ start: S.cur.secStart, end: rel, status: secStatus });
   const secs = S.cur.sections;
-  const auto = secs.every(s => s.status === 'NG') ? 'NG' : secs.some(s => s.status === 'OK') ? 'OK' : 'KEEP';
+  const auto = secs.every(s => s.status === 'NG') ? 'NG' : secs.some(s => s.status === 'OK') ? 'OK' : 'HOLD';
   S.takes.push({
     num: S.cur.num, fname: S.cur.fname,
     startMs: S.cur.startMs, endMs: end,
-    status: auto, sections: secs, memos: S.cur.memos, note: $('#sheetNote').value.trim(),
+    status: takeStatus || auto, sections: secs, memos: S.cur.memos, note: $('#sheetNote').value.trim(),
   });
   S.seq++; S.cur = null;
   save();
@@ -176,7 +182,7 @@ function render() {
       <span class="tfile">${t.fname}</span>
       <span class="tdur">${durStr(t.endMs - t.startMs)}${note}</span>
       ${secInfo ? `<span class="ngbadge">${secInfo}</span>` : ''}
-      <button class="chip ${t.status}" data-num="${t.num}">${LBL[t.status] || t.status}</button>
+      <button class="chip ${t.status}" data-num="${t.num}">${TLBL[t.status] || t.status}</button>
       <button class="tdel" data-del="${t.num}">×</button>
     </div>` +
     (t.sections || []).map((s, i) => s.status !== 'OK' || secN > 1
@@ -193,7 +199,6 @@ setInterval(() => {
     $('#clock').textContent = msToTC(rel);
     $('#takeLabel').textContent = `REC · 테이크 ${S.cur.num} · ${S.cur.fname}`;
     $('#wallSub').textContent = `시작 ${clockStr(new Date(S.cur.startMs))}`;
-    $('#sheetClock').textContent = msToTC(rel);
     const cur = $('#tlCur');
     if (cur) {
       cur.style.width = Math.max(3, rel / 1000 * PXS) + 'px';
@@ -235,7 +240,7 @@ function buildFCPXML() {
     return secs.map((sec, si) => {
       const len = sec.end - sec.start;
       let mk = '';
-      if (si === 0) mk += `\n        <marker start="0s" duration="1/1000s" value="T${pad(t.num, 2)} ${LBL[t.status] || t.status}" note="${xmlEsc(t.note)}"/>`;
+      if (si === 0) mk += `\n        <marker start="0s" duration="1/1000s" value="T${pad(t.num, 2)} ${TLBL[t.status] || t.status}" note="${xmlEsc(t.note)}"/>`;
       if (sec.status === 'NG') mk += `\n        <marker start="0s" duration="${rat(len)}" value="삭제 구간" note="${xmlEsc(t.note)}"/>`;
       for (const m of (t.memos || [])) {
         if (m.ms >= sec.start && m.ms < sec.end)
@@ -291,7 +296,7 @@ function buildCSV() {
   const rows = [['take', 'clip_file', 'status', 'start_time', 'end_time', 'duration', 'sections', 'note', 'memos']];
   for (const t of S.takes) {
     const segs = (t.sections || []).map(s => `${durStr(s.start)}-${durStr(s.end)} ${LBL[s.status] || s.status}`).join(' | ');
-    rows.push([t.num, t.fname, LBL[t.status] || t.status, clockStr(new Date(t.startMs)), clockStr(new Date(t.endMs)),
+    rows.push([t.num, t.fname, TLBL[t.status] || t.status, clockStr(new Date(t.startMs)), clockStr(new Date(t.endMs)),
       durStr(t.endMs - t.startMs), segs, t.note,
       (t.memos || []).map(m => `${durStr(m.ms)} ${m.text}`).join(' | ')]);
   }
@@ -316,7 +321,11 @@ $('#btnRoll').addEventListener('click', roll);
 document.querySelectorAll('.jbtn').forEach(b => b.addEventListener('click', () => sectionMark(b.dataset.j)));
 $('#btnUndoSec').addEventListener('click', undoSection);
 $('#btnCut').addEventListener('click', cut);
-$('#sheetCancel').addEventListener('click', () => $('#sheet').classList.add('hidden'));
+$('#sheetCancel').addEventListener('click', () => {
+  if (S.cur) { delete S.cur.cutAt; save(); }
+  $('#sheet').classList.add('hidden');
+});
+$('#sheetHold').addEventListener('click', () => { buzz(30); judge('KEEP', 'HOLD'); });
 $('#memoSend').addEventListener('click', addMemo);
 $('#memoInput').addEventListener('keydown', e => { if (e.key === 'Enter') addMemo(); });
 document.querySelectorAll('.judge').forEach(b => b.addEventListener('click', () => { buzz(30); judge(b.dataset.s); }));
@@ -326,7 +335,7 @@ $('#takeList').addEventListener('click', e => {
   const del = e.target.closest('[data-del]');
   if (chip) {
     const t = S.takes.find(x => x.num == chip.dataset.num);
-    t.status = t.status === 'OK' ? 'KEEP' : t.status === 'KEEP' ? 'NG' : 'OK';
+    t.status = t.status === 'OK' ? 'HOLD' : t.status === 'HOLD' ? 'NG' : 'OK';
     save(); render();
   }
   if (del) {
