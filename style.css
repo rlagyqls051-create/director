@@ -23,7 +23,6 @@ main { flex:1; display:flex; flex-direction:column; padding:0 14px calc(env(safe
 #clockWrap { text-align:center; padding:8px 0 12px; position:relative; }
 #recDot { width:10px; height:10px; border-radius:50%; background:#333; margin:0 auto 6px; }
 body.rolling #recDot { background:#ff3b30; animation:pulse 1s infinite; }
-body.ngseg #recDot { background:#ff9500; }
 @keyframes pulse { 50% { opacity:.3; } }
 
 #takeLabel { font-size:13px; letter-spacing:.12em; color:#888; font-weight:700; }
@@ -42,8 +41,8 @@ body.rolling #clock { font-weight:600; }
 #rollCtl { display:flex; flex-direction:column; gap:10px; }
 .jrow { display:flex; gap:8px; }
 .jbtn { flex:1; height:56px; border:none; border-radius:14px; font-size:17px; font-weight:800; }
-.jbtn.ok { background:#14532d; color:#30d158; }
-.jbtn.keep { background:#713f12; color:#ffd60a; }
+.jbtn.ok { background:#0c2745; color:#409cff; }
+.jbtn.keep { background:#14532d; color:#30d158; }
 .jbtn.ng { background:#7f1d1d; color:#ff6b62; }
 .jbtn:active { transform:scale(.96); }
 #btnCut { background:#e5e5ea; color:#000; height:76px; }
@@ -70,9 +69,9 @@ body.rolling #clock { font-weight:600; }
 #timeline { display:flex; height:100%; width:max-content; min-width:100%; position:relative; }
 .tlTake { position:relative; height:100%; border-right:2px solid #0a0a0a; flex:none; min-width:3px; display:flex; }
 .tlSec { height:100%; flex:none; position:relative; }
-.tlSec.OK { background:#14532d; }
+.tlSec.OK { background:#0c2745; }
 .tlSec.NG { background:#7f1d1d; }
-.tlSec.KEEP { background:#713f12; }
+.tlSec.KEEP { background:#14532d; }
 .tlSec.cur { background:#c82f28; animation:pulse 1s infinite; }
 .tlNum { position:absolute; top:3px; left:5px; font-size:10px; font-weight:700; color:rgba(255,255,255,.75); white-space:nowrap; pointer-events:none; }
 #playhead { position:absolute; top:-2px; bottom:-2px; width:2px; background:#fff; box-shadow:0 0 6px #fff; display:none; }
@@ -87,9 +86,9 @@ body.rolling #playhead { display:block; }
 .trow .tfile { color:#666; font-size:12px; }
 .trow .tdur { flex:1; color:#aaa; font-size:14px; }
 .chip { border-radius:6px; padding:3px 9px; font-size:12px; font-weight:800; border:none; }
-.chip.OK { background:#0d3a1a; color:#30d158; }
+.chip.OK { background:#0a2038; color:#409cff; }
 .chip.NG { background:#3a0d0d; color:#ff453a; }
-.chip.KEEP { background:#3a2f0d; color:#ffd60a; }
+.chip.KEEP { background:#0d3a1a; color:#30d158; }
 .ngbadge { font-size:11px; color:#ff9500; }
 .tdel { background:none; border:none; color:#555; font-size:16px; padding:4px 6px; }
 .empty { color:#444; text-align:center; padding:28px 0; font-size:13px; }
@@ -107,9 +106,9 @@ body.rolling #playhead { display:block; }
 .note { width:100%; background:#2c2c2e; border:1px solid #3a3a3c; border-radius:10px; color:#eee; padding:11px; font-size:16px; margin-bottom:12px; }
 .sheetBtns { display:flex; gap:10px; }
 .judge { flex:1; height:64px; border:none; border-radius:14px; font-size:20px; font-weight:800; }
-.judge.ok { background:#30d158; color:#000; }
+.judge.ok { background:#0a84ff; color:#fff; }
 .judge.ng { background:#ff453a; color:#000; }
-.judge.keep { background:#ffd60a; color:#000; }
+.judge.keep { background:#30d158; color:#000; }
 .sheetCancel { width:100%; margin-top:12px; background:none; border:none; color:#888; font-size:14px; padding:8px; }
 .hint { font-size:12px; color:#777; line-height:1.5; margin-bottom:12px; }
 .expBtns { display:flex; flex-direction:column; gap:10px; }

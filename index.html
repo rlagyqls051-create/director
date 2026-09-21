@@ -35,9 +35,9 @@
     <button id="btnRoll" class="big roll">ROLL</button>
     <div id="rollCtl" class="hidden">
       <div class="jrow">
-        <button class="jbtn ok" data-j="OK">채택</button>
-        <button class="jbtn keep" data-j="KEEP">보류</button>
-        <button class="jbtn ng" data-j="NG">버림</button>
+        <button class="jbtn keep" data-j="KEEP">특이사항</button>
+        <button class="jbtn ng" data-j="NG">삭제</button>
+        <button class="jbtn ok" data-j="OK">편집에쓰자</button>
       </div>
       <button id="btnUndoSec" class="undo hidden">↩ 직전 구간 판정 취소</button>
       <button id="btnCut" class="big cut">CUT</button>
@@ -61,9 +61,9 @@
     <div class="sheetClock" id="sheetClock">00:00:00:00</div>
     <input id="sheetNote" class="note" placeholder="노트 (선택) — 예: 인터뷰어 웃음" autocomplete="off">
     <div class="sheetBtns">
-      <button class="judge ok" data-s="OK">채택</button>
-      <button class="judge keep" data-s="KEEP">보류</button>
-      <button class="judge ng" data-s="NG">버림</button>
+      <button class="judge keep" data-s="KEEP">특이사항</button>
+      <button class="judge ng" data-s="NG">삭제</button>
+      <button class="judge ok" data-s="OK">편집에쓰자</button>
     </div>
     <button id="sheetCancel" class="sheetCancel">계속 롤 (타이머 안 멈춤)</button>
   </div>
@@ -73,7 +73,7 @@
 <div id="exportSheet" class="sheet hidden">
   <div class="sheetBox">
     <div class="sheetTitle">편집으로 보내기</div>
-    <p class="hint">FCPXML을 프리미어에 임포트하면 테이크별 클립 + NG 마커가 타임라인에 뜹니다. 카메라 파일명 패턴이 맞으면 자동 릴링크됩니다.</p>
+    <p class="hint">FCPXML을 프리미어에 임포트하면 테이크별 클립 + 삭제 마커가 타임라인에 뜹니다. 카메라 파일명 패턴이 맞으면 자동 릴링크됩니다.</p>
     <div class="expBtns">
       <button id="expFcp" class="expBtn">FCPXML 보내기/저장</button>
       <button id="expSrt" class="expBtn">SRT 자막 보내기/저장</button>

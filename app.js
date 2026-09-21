@@ -40,11 +40,13 @@ const clockStr = t => `${pad(t.getHours())}:${pad(t.getMinutes())}:${pad(t.getSe
 const fileName = num => `${S.prefix}${pad(S.startNo + num - 1, 4)}.MP4`;
 const buzz = p => { if (S.sound && navigator.vibrate) navigator.vibrate(p); };
 const xmlEsc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const LBL = { OK: '편집에쓰자', KEEP: '특이사항', NG: '삭제' };
 
 function beep() {
   if (!S.sound) return;
   try {
     const ctx = beep.ctx || (beep.ctx = new (window.AudioContext || window.webkitAudioContext)());
+    if (ctx.state === 'suspended') ctx.resume();
     const o = ctx.createOscillator(), g = ctx.createGain();
     o.frequency.value = 1000; g.gain.value = 0.25;
     o.connect(g); g.connect(ctx.destination);
@@ -174,11 +176,11 @@ function render() {
       <span class="tfile">${t.fname}</span>
       <span class="tdur">${durStr(t.endMs - t.startMs)}${note}</span>
       ${secInfo ? `<span class="ngbadge">${secInfo}</span>` : ''}
-      <button class="chip ${t.status}" data-num="${t.num}">${({OK:'채택',KEEP:'보류',NG:'버림'})[t.status] || t.status}</button>
+      <button class="chip ${t.status}" data-num="${t.num}">${LBL[t.status] || t.status}</button>
       <button class="tdel" data-del="${t.num}">×</button>
     </div>` +
     (t.sections || []).map((s, i) => s.status !== 'OK' || secN > 1
-      ? `<div class="mline">└ ${durStr(s.start)}–${durStr(s.end)} ${({OK:'채택',KEEP:'보류',NG:'버림'})[s.status]}</div>` : '').join('') +
+      ? `<div class="mline">└ ${durStr(s.start)}–${durStr(s.end)} ${LBL[s.status] || s.status}</div>` : '').join('') +
     (t.memos || []).map(m => `<div class="mline">└ ${durStr(m.ms)} — ${xmlEsc(m.text)}</div>`).join('');
   }).join('');
 }
@@ -226,7 +228,6 @@ function buildFCPXML() {
     `      <media-rep kind="original-media" src="file:///localhost/RELINK/${xmlEsc(t.fname)}"/>\n    </asset>`
   ).join('\n');
 
-  const LABEL = { OK: '채택', KEEP: '보류', NG: '버림' };
   let offset = 0;
   const clips = S.takes.map(t => {
     const dur = t.endMs - t.startMs;
@@ -234,13 +235,13 @@ function buildFCPXML() {
     return secs.map((sec, si) => {
       const len = sec.end - sec.start;
       let mk = '';
-      if (si === 0) mk += `\n        <marker start="0s" duration="1/1000s" value="T${pad(t.num, 2)} ${t.status}" note="${xmlEsc(t.note)}"/>`;
-      if (sec.status === 'NG') mk += `\n        <marker start="0s" duration="${rat(len)}" value="버림 - 삭제" note="${xmlEsc(t.note)}"/>`;
+      if (si === 0) mk += `\n        <marker start="0s" duration="1/1000s" value="T${pad(t.num, 2)} ${LBL[t.status] || t.status}" note="${xmlEsc(t.note)}"/>`;
+      if (sec.status === 'NG') mk += `\n        <marker start="0s" duration="${rat(len)}" value="삭제 구간" note="${xmlEsc(t.note)}"/>`;
       for (const m of (t.memos || [])) {
         if (m.ms >= sec.start && m.ms < sec.end)
           mk += `\n        <marker start="${rat(m.ms - sec.start)}" duration="1/1000s" value="${xmlEsc(m.text.slice(0, 60))}" note="${xmlEsc(m.text)}"/>`;
       }
-      const c = `      <asset-clip ref="a${t.num}" offset="${rat(offset)}" name="T${pad(t.num, 2)}.${si + 1} ${LABEL[sec.status] || sec.status}" start="${rat(sec.start)}" duration="${rat(len)}" format="r1" tcFormat="NDF" audioRole="dialogue">${mk}\n      </asset-clip>`;
+      const c = `      <asset-clip ref="a${t.num}" offset="${rat(offset)}" name="T${pad(t.num, 2)}.${si + 1} ${LBL[sec.status] || sec.status}" start="${rat(sec.start)}" duration="${rat(len)}" format="r1" tcFormat="NDF" audioRole="dialogue">${mk}\n      </asset-clip>`;
       offset += len;
       return c;
     }).join('\n');
@@ -287,11 +288,10 @@ function buildSRT() {
 }
 
 function buildCSV() {
-  const LBL = { OK: '채택', KEEP: '보류', NG: '버림' };
   const rows = [['take', 'clip_file', 'status', 'start_time', 'end_time', 'duration', 'sections', 'note', 'memos']];
   for (const t of S.takes) {
     const segs = (t.sections || []).map(s => `${durStr(s.start)}-${durStr(s.end)} ${LBL[s.status] || s.status}`).join(' | ');
-    rows.push([t.num, t.fname, t.status, clockStr(new Date(t.startMs)), clockStr(new Date(t.endMs)),
+    rows.push([t.num, t.fname, LBL[t.status] || t.status, clockStr(new Date(t.startMs)), clockStr(new Date(t.endMs)),
       durStr(t.endMs - t.startMs), segs, t.note,
       (t.memos || []).map(m => `${durStr(m.ms)} ${m.text}`).join(' | ')]);
   }
@@ -326,7 +326,7 @@ $('#takeList').addEventListener('click', e => {
   const del = e.target.closest('[data-del]');
   if (chip) {
     const t = S.takes.find(x => x.num == chip.dataset.num);
-    t.status = t.status === 'OK' ? 'NG' : t.status === 'NG' ? 'KEEP' : 'OK';
+    t.status = t.status === 'OK' ? 'KEEP' : t.status === 'KEEP' ? 'NG' : 'OK';
     save(); render();
   }
   if (del) {
@@ -378,7 +378,7 @@ $('#setReset').addEventListener('click', () => {
     S.takes = []; S.seq = 1; S.cur = null;
     save(); render();
     $('#setSheet').classList.add('hidden');
-    document.body.classList.remove('rolling', 'ngseg');
+    document.body.classList.remove('rolling');
   }
 });
 
