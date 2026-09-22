@@ -31,6 +31,11 @@
     <div id="wallSub"></div>
   </div>
 
+  <div id="camWrap" class="hidden">
+    <video id="camView" autoplay playsinline muted></video>
+    <button id="camFlip" title="카메라 전환">↻</button>
+  </div>
+
   <div id="controls">
     <button id="btnRoll" class="big roll"><span id="rollFill"></span><span class="rlabel">ROLL<span class="holdHint">길게 눌러 시작</span></span></button>
     <div id="rollCtl" class="hidden">
@@ -76,10 +81,12 @@
     <div class="sheetTitle">편집으로 보내기</div>
     <p class="hint">FCPXML을 프리미어에 임포트하면 테이크별 클립 + 삭제 마커가 타임라인에 뜹니다. 카메라 파일명 패턴이 맞으면 자동 릴링크됩니다.</p>
     <div class="expBtns">
-      <button id="expFcp" class="expBtn primary">FCPXML 보내기/저장</button>
+      <button id="expUp" class="expBtn primary">내 저장소로 전송</button>
+      <button id="expFcp" class="expBtn">FCPXML 보내기/저장</button>
       <button id="expSrt" class="expBtn">SRT 자막 보내기/저장</button>
       <button id="expCsv" class="expBtn">CSV 보내기/저장</button>
       <button id="expAud" class="expBtn">테이크 오디오 보내기</button>
+      <button id="expVid" class="expBtn">테이크 영상 보내기</button>
     </div>
     <button id="expCancel" class="sheetCancel">닫기</button>
   </div>
@@ -114,6 +121,14 @@
     <label class="fld chk"><input type="checkbox" id="setSlate"> ROLL 시작 시 화면 플래시 + 삑 소리 (슬레이트 대용)</label>
     <label class="fld chk"><input type="checkbox" id="setSound"> 버튼 진동/사운드</label>
     <label class="fld chk"><input type="checkbox" id="setMic"> 롤 중 마이크 녹음 + 박수/슬레이트 감지 (싱크용 오디오)</label>
+    <label class="fld chk"><input type="checkbox" id="setCam"> 앱 안 카메라 — 폰으로 직접 찍는 셀프 촬영 (롤 동안 영상 녹화)</label>
+    <label class="fld">오프컷 ID <span class="hint">파일명·FCPXML·CSV에 박혀서 오프컷 AI가 주인을 인식</span>
+      <input id="setUid" autocomplete="username" placeholder="예: hyobin">
+    </label>
+    <label class="fld">저장소 주소 + 비번 <span class="hint">'내 저장소로 전송'이 이 주소로 업로드 — 비번은 이 폰에만 저장됨</span>
+      <input id="setUpUrl" inputmode="url" autocomplete="off" placeholder="https://...">
+      <input id="setUpw" type="password" autocomplete="off" placeholder="비밀번호" style="margin-top:6px">
+    </label>
     <button id="setClose" class="sheetCancel">닫기</button>
     <button id="setReset" class="danger">로그 전체 삭제</button>
   </div>

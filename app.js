@@ -13,6 +13,11 @@ function fresh() {
     sound: true,
     syncOffset: 0,        // ms — 플래시(app 0초)가 카메라 파일 안에서 밀린 시간 (카메라 선행 롤 = 양수)
     mic: false,           // 롤 중 마이크 녹음 + 박수 감지
+    cam: false,           // 앱 안 카메라 — 셀프 촬영 모드 (롤 동안 영상 녹화)
+    camFacing: 'user',    // 'user' 전면 | 'environment' 후면
+    uid: '',              // 오프컷 ID — 파일명/FCPXML/CSV에 삽입 → 오프컷 AI가 소유자 인식
+    upUrl: '',            // 내 저장소 업로드 주소
+    upw: '',              // 저장소 비번 (이 폰 localStorage에만 저장)
     takes: [],          // {num, fname, startMs, endMs, status, sections:[{start,end,status}], memos:[{ms,text}], note}
     seq: 1,
     cur: null,          // rolling take: {num, fname, startMs, secStart, sections:[], memos:[]}
@@ -24,6 +29,11 @@ localStorage.removeItem('offcut.v1'); localStorage.removeItem('director.v1');
 S.takes.forEach(t => { if (t.status === 'KEEP') t.status = 'HOLD'; });
 if (S.syncOffset == null) S.syncOffset = 0;
 if (S.mic == null) S.mic = false;
+if (S.cam == null) S.cam = false;
+if (S.camFacing == null) S.camFacing = 'user';
+if (S.uid == null) S.uid = '';
+if (S.upUrl == null) S.upUrl = '';
+if (S.upw == null) S.upw = '';
 if (S.cur) delete S.cur.cutAt;
 const save = () => localStorage.setItem(LS_KEY, JSON.stringify(S));
 
@@ -81,28 +91,19 @@ document.addEventListener('visibilitychange', () => {
 });
 
 /* ---------- mic recording + clap detect (싱크용) ---------- */
-let rec = null;                     // {mr, stream, ctx, chunks, ext, raf}
+let rec = null;                     // {mr, stream, chunks, ext, clap}
 const audioBlobs = new Map();       // takeNum → {blob, ext}  (메모리만 — 앱 재시작 시 소실)
 
-async function micStart() {
-  if (!S.mic || rec) return;
+// 트랜지언트(박수/슬레이트) 감지: 순간 피크가 롤링 베이스라인의 4배 이상
+function watchClaps(stream) {
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    if (!S.cur) { stream.getTracks().forEach(t => t.stop()); return; }
-    const mime = MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4'
-      : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
-    const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
-    const chunks = [];
-    mr.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
-    mr.start(500);
-    // 트랜지언트(박수/슬레이트) 감지: 순간 피크가 롤링 베이스라인의 4배 이상
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
     const an = ctx.createAnalyser(); an.fftSize = 1024;
     ctx.createMediaStreamSource(stream).connect(an);
     const buf = new Float32Array(an.fftSize);
-    let base = 0.02, lastClap = -1e9;
+    let base = 0.02, lastClap = -1e9, raf;
     const tick = () => {
-      if (!rec || !S.cur) return;
+      if (!S.cur) return;
       an.getFloatTimeDomainData(buf);
       let peak = 0;
       for (let i = 0; i < buf.length; i++) peak = Math.max(peak, Math.abs(buf[i]));
@@ -113,25 +114,94 @@ async function micStart() {
         S.cur.memos.push({ ms: Math.round(now), text: '슬레이트 감지' });
         save(); render();
       }
-      rec.raf = requestAnimationFrame(tick);
+      raf = requestAnimationFrame(tick);
     };
-    rec = { mr, stream, ctx, chunks, ext: mime.includes('mp4') ? 'm4a' : 'webm' };
-    rec.raf = requestAnimationFrame(tick);
+    raf = requestAnimationFrame(tick);
+    return { stop() { cancelAnimationFrame(raf); ctx.close().catch(() => {}); } };
+  } catch { return { stop() {} }; }
+}
+
+async function micStart() {
+  if (!S.mic || S.cam || rec) return;   // 앱 안 카메라가 켜져 있으면 영상에 오디오가 같이 들어감
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    if (!S.cur) { stream.getTracks().forEach(t => t.stop()); return; }
+    const mime = MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4'
+      : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+    const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    const chunks = [];
+    mr.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+    mr.start(500);
+    rec = { mr, stream, chunks, ext: mime.includes('mp4') ? 'm4a' : 'webm', clap: watchClaps(stream) };
   } catch {}
 }
 
 function micStop(num, keep = true) {
   if (!rec) return;
   const r = rec; rec = null;
-  cancelAnimationFrame(r.raf);
+  r.clap.stop();
   r.mr.onstop = () => {
     const blob = new Blob(r.chunks, { type: r.mr.mimeType || 'audio/mp4' });
     if (keep && blob.size) audioBlobs.set(num, { blob, ext: r.ext });
     r.stream.getTracks().forEach(t => t.stop());
-    r.ctx.close().catch(() => {});
   };
   try { r.mr.stop(); } catch {}
 }
+
+/* ---------- 앱 안 카메라 (셀프 촬영) ---------- */
+let camStream = null;               // 프리뷰용 getUserMedia 스트림 (cam 모드 동안 상시)
+let vrec = null;                    // {mr, chunks, ext, clap}
+const videoBlobs = new Map();       // takeNum → {blob, ext}  (메모리만 — 오디오와 동일)
+const VID_MIME = ['video/mp4;codecs="avc1.42E01E,mp4a.40.2"', 'video/mp4', 'video/webm;codecs=h264,opus', 'video/webm'];
+
+async function camOn() {
+  if (!S.cam || camStream) return;
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: S.camFacing, width: { ideal: 1920 }, height: { ideal: 1080 } },
+      audio: true,
+    });
+    const v = $('#camView');
+    v.srcObject = camStream;
+    v.classList.toggle('self', S.camFacing === 'user');
+    $('#camWrap').classList.remove('hidden');
+  } catch (e) {
+    S.cam = false; save();
+    alert('카메라를 열 수 없습니다 — ' + (e && e.name === 'NotAllowedError' ? '카메라/마이크 권한이 거부됨' : '이 기기/브라우저 미지원'));
+  }
+}
+
+function camOff() {
+  if (vrec) vStop(S.cur ? S.cur.num : -1, false);
+  if (camStream) { camStream.getTracks().forEach(t => t.stop()); camStream = null; }
+  $('#camView').srcObject = null;
+  $('#camWrap').classList.add('hidden');
+}
+
+function vStart() {
+  if (!S.cam || !camStream || vrec || !window.MediaRecorder) return;
+  const mime = VID_MIME.find(m => MediaRecorder.isTypeSupported(m));
+  if (!mime) return;   // 인앱 녹화 미지원 기기 — 미리보기만 동작
+  const mr = new MediaRecorder(camStream, { mimeType: mime });
+  const chunks = [];
+  mr.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+  mr.start(500);
+  vrec = { mr, chunks, ext: mime.includes('mp4') ? 'mp4' : 'webm', clap: watchClaps(camStream) };
+}
+
+function vStop(num, keep = true) {
+  if (!vrec) return;
+  const r = vrec; vrec = null;
+  r.clap.stop();
+  r.mr.onstop = () => {
+    const blob = new Blob(r.chunks, { type: r.mr.mimeType });
+    if (keep && blob.size) videoBlobs.set(num, { blob, ext: r.ext });
+  };
+  try { r.mr.stop(); } catch {}
+}
+
+// mp4로 녹화됐으면 카메라 파일명(C0001.MP4) 그대로 → FCPXML 릴링크 매칭
+const vidName = (t, ext) => ext === 'mp4' ? t.fname : t.fname.replace(/\.[^.]+$/, '.' + ext);
 
 /* ---------- roll / cut / ng ---------- */
 function roll() {
@@ -147,7 +217,7 @@ function roll() {
   }
   document.body.classList.add('rolling');
   setWake(true);
-  micStart();
+  if (S.cam) vStart(); else micStart();
   render();
 }
 
@@ -203,6 +273,7 @@ function judge(secStatus, takeStatus) {
     status: takeStatus || auto, sections: secs, memos: S.cur.memos, note: $('#sheetNote').value.trim(),
   });
   micStop(S.cur.num);
+  vStop(S.cur.num);
   S.seq++; S.cur = null;
   save();
   $('#sheet').classList.add('hidden');
@@ -325,6 +396,8 @@ function buildFCPXML() {
     }).join('\n');
   }).join('\n');
 
+  // 오프컷 AI 인식용 메타데이터 — 소유자 ID를 파일 안에 박아둠
+  const meta = `\n    <metadata><md key="com.offcut.uid">${xmlEsc(S.uid)}</md><md key="com.offcut.app">offcut-director</md></metadata>`;
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE fcpxml>
 <fcpxml version="1.9">
@@ -332,7 +405,7 @@ function buildFCPXML() {
     <format id="r1" name="${fmtName}" frameDuration="${fps}" width="1920" height="1080" colorSpace="1-1-1 (Rec. 709)"/>
 ${assets}
   </resources>
-  <library>
+  <library>${S.uid ? meta : ''}
     <event name="offcut-director ${date}">
       <project name="${xmlEsc(S.project)} 촬영로그 ${date}">
         <sequence format="r1" duration="${rat(total)}" tcStart="0s" tcFormat="NDF" audioLayout="stereo" audioRate="48k">
@@ -366,10 +439,10 @@ function buildSRT() {
 }
 
 function buildCSV() {
-  const rows = [['take', 'clip_file', 'sync_offset_s', 'status', 'start_time', 'end_time', 'duration', 'sections', 'note', 'memos']];
+  const rows = [['user', 'take', 'clip_file', 'sync_offset_s', 'status', 'start_time', 'end_time', 'duration', 'sections', 'note', 'memos']];
   for (const t of S.takes) {
     const segs = (t.sections || []).map(s => `${durStr(s.start)}-${durStr(s.end)} ${LBL[s.status] || s.status}`).join(' | ');
-    rows.push([t.num, t.fname, ((t.offsetMs ?? S.syncOffset) / 1000), TLBL[t.status] || t.status, clockStr(new Date(t.startMs)), clockStr(new Date(t.endMs)),
+    rows.push([S.uid, t.num, t.fname, ((t.offsetMs ?? S.syncOffset) / 1000), TLBL[t.status] || t.status, clockStr(new Date(t.startMs)), clockStr(new Date(t.endMs)),
       durStr(t.endMs - t.startMs), segs, t.note,
       (t.memos || []).map(m => `${durStr(m.ms)} ${m.text}`).join(' | ')]);
   }
@@ -393,7 +466,7 @@ async function sendFile(name, text, mime) {
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
 
-const safeName = () => `${S.project.replace(/\s+/g, '_')}_촬영로그_${new Date().toISOString().slice(0, 10)}`;
+const safeName = () => `${S.uid ? S.uid.replace(/[^\w.-]/g, '_') + '_' : ''}${S.project.replace(/\s+/g, '_')}_촬영로그_${new Date().toISOString().slice(0, 10)}`;
 
 const blobToB64 = blob => new Promise((res, rej) => {
   const r = new FileReader();
@@ -401,6 +474,37 @@ const blobToB64 = blob => new Promise((res, rej) => {
   r.onerror = rej;
   r.readAsDataURL(blob);
 });
+
+/* ---------- 내 저장소 업로드 (오프컷 AI 연동용) ---------- */
+const b64 = s => btoa(String.fromCharCode(...new TextEncoder().encode(s)));
+
+// 설정의 저장소 주소로 로그 파일 + 테이크 미디어를 multipart 한 번에 POST
+// 서버 쪽에서 Basic auth(uid:upw) 확인 → uid 폴더 아래 파일 저장하는 구조를 상정
+async function uploadAll() {
+  const fd = new FormData();
+  fd.append('uid', S.uid);
+  fd.append('project', S.project);
+  fd.append('app', 'offcut-director');
+  const base = safeName();
+  if (S.takes.length) {
+    fd.append('files', new Blob([buildFCPXML()], { type: 'application/xml' }), base + '.fcpxml');
+    fd.append('files', new Blob([buildCSV()], { type: 'text/csv' }), base + '.csv');
+    const srt = buildSRT();
+    if (srt) fd.append('files', new Blob([srt], { type: 'application/x-subrip' }), base + '.srt');
+  }
+  for (const [n, a] of [...audioBlobs.entries()].sort((x, y) => x[0] - y[0]))
+    fd.append('files', a.blob, `T${pad(n, 2)}.${a.ext}`);
+  for (const [n, v] of [...videoBlobs.entries()].sort((x, y) => x[0] - y[0])) {
+    const t = S.takes.find(x => x.num === n);
+    fd.append('files', v.blob, t ? vidName(t, v.ext) : `T${pad(n, 2)}.${v.ext}`);
+  }
+  const res = await fetch(S.upUrl, {
+    method: 'POST',
+    headers: { Authorization: 'Basic ' + b64(`${S.uid}:${S.upw}`) },
+    body: fd,
+  });
+  if (!res.ok) throw new Error(`서버 응답 ${res.status}`);
+}
 
 /* ---------- wiring ---------- */
 /* ROLL은 꾹 눌러 시작 (오타치 방지 — 유령 롤은 카메라 파일 번호와 어긋남) */
@@ -454,6 +558,7 @@ $('#takeList').addEventListener('click', e => {
     if (confirm(`테이크 ${num} 로그 삭제?`)) {
       S.takes = S.takes.filter(x => x.num !== num);
       audioBlobs.delete(num);
+      videoBlobs.delete(num);
       const later = S.takes.filter(x => x.num > num);
       if ((later.length || num === S.seq - 1) && confirm('이 롤을 카메라가 안 찍었나요? (맞으면 이후 테이크 번호·파일명을 하나씩 당깁니다)')) {
         later.forEach(t => { t.num--; t.fname = fileName(t.num); });
@@ -470,6 +575,21 @@ $('#expCancel').addEventListener('click', () => $('#exportSheet').classList.add(
 ['#exportSheet', '#setSheet'].forEach(id => {
   const el = $(id);
   el.addEventListener('click', e => { if (e.target === el) el.classList.add('hidden'); });
+});
+$('#expUp').addEventListener('click', async e => {
+  if (!S.uid || !S.upUrl) return alert('설정에서 오프컷 ID·저장소 주소·비번을 먼저 입력하세요.');
+  if (!S.takes.length && !audioBlobs.size && !videoBlobs.size) return alert('보낼 기록이 없습니다.');
+  const btn = e.currentTarget, orig = btn.textContent;
+  btn.disabled = true; btn.textContent = '전송 중…';
+  try {
+    await uploadAll();
+    alert('내 저장소로 전송 완료');
+    $('#exportSheet').classList.add('hidden');
+  } catch (err) {
+    alert('업로드 실패 — ' + err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
 });
 $('#expFcp').addEventListener('click', () => {
   if (!S.takes.length) return alert('기록된 테이크가 없습니다.');
@@ -506,6 +626,39 @@ $('#expAud').addEventListener('click', async () => {
     a.href = URL.createObjectURL(f); a.download = f.name; a.click();
   }, i * 400));
 });
+$('#expVid').addEventListener('click', async () => {
+  if (!videoBlobs.size) return alert('녹화된 영상이 없습니다. (설정에서 앱 안 카메라를 켜고 롤하세요)');
+  const files = [...videoBlobs.entries()].sort((a, b) => a[0] - b[0]).map(([n, v]) => {
+    const t = S.takes.find(x => x.num === n);
+    return { name: t ? vidName(t, v.ext) : `T${pad(n, 2)}.${v.ext}`, blob: v.blob };
+  });
+  if (CAP && CAP.Filesystem && CAP.Share) {
+    const urls = [];
+    for (const f of files) {
+      await CAP.Filesystem.writeFile({ path: f.name, data: await blobToB64(f.blob), directory: 'CACHE', recursive: true });
+      urls.push((await CAP.Filesystem.getUri({ path: f.name, directory: 'CACHE' })).uri);
+    }
+    await CAP.Share.share({ files: urls });
+    return;
+  }
+  const fs = files.map(f => new File([f.blob], f.name, { type: f.blob.type }));
+  if (navigator.canShare && navigator.canShare({ files: fs })) {
+    try { await navigator.share({ files: fs }); return; } catch (e) { if (e.name === 'AbortError') return; }
+  }
+  fs.forEach((f, i) => setTimeout(() => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(f); a.download = f.name; a.click();
+  }, i * 400));
+});
+
+/* 카메라 전면/후면 전환 — 롤 중엔 녹화가 끊기므로 잠금 */
+$('#camFlip').addEventListener('click', async () => {
+  if (S.cur || !S.cam) return;
+  S.camFacing = S.camFacing === 'user' ? 'environment' : 'user';
+  save();
+  if (camStream) { camStream.getTracks().forEach(t => t.stop()); camStream = null; }
+  await camOn();
+});
 
 $('#btnSettings').addEventListener('click', () => {
   $('#setProject').value = S.project;
@@ -516,6 +669,10 @@ $('#btnSettings').addEventListener('click', () => {
   $('#setSlate').checked = S.slate;
   $('#setSound').checked = S.sound;
   $('#setMic').checked = S.mic;
+  $('#setCam').checked = S.cam;
+  $('#setUid').value = S.uid;
+  $('#setUpUrl').value = S.upUrl;
+  $('#setUpw').value = S.upw;
   $('#setSheet').classList.remove('hidden');
 });
 $('#setClose').addEventListener('click', () => {
@@ -527,13 +684,20 @@ $('#setClose').addEventListener('click', () => {
   S.sound = $('#setSound').checked;
   S.syncOffset = (+$('#setSync').value || 0) * 1000;
   S.mic = $('#setMic').checked;
+  S.uid = $('#setUid').value.trim();
+  S.upUrl = $('#setUpUrl').value.trim();
+  S.upw = $('#setUpw').value;
+  const camWas = S.cam;
+  S.cam = $('#setCam').checked;
   save(); render();
+  if (S.cam && !camWas) camOn();          // 롤 중이 아니면 다음 테이크부터 녹화
+  if (!S.cam && camWas) camOff();
   $('#setSheet').classList.add('hidden');
 });
 $('#setReset').addEventListener('click', () => {
   if (confirm('테이크 로그를 전부 삭제할까요? (되돌릴 수 없음)')) {
-    if (S.cur) micStop(S.cur.num, false);   // 롤 중 리셋이면 녹음은 버림
-    S.takes = []; S.seq = 1; S.cur = null; audioBlobs.clear();
+    if (S.cur) { micStop(S.cur.num, false); vStop(S.cur.num, false); }   // 롤 중 리셋이면 녹화는 버림
+    S.takes = []; S.seq = 1; S.cur = null; audioBlobs.clear(); videoBlobs.clear();
     setWake(false);
     save(); render();
     $('#setSheet').classList.add('hidden');
@@ -542,5 +706,6 @@ $('#setReset').addEventListener('click', () => {
 });
 
 render();
-if (S.cur && S.mic) micStart();   // 롤 중 앱 재시작 → 녹음 재개 (권한 물어볼 수 있음)
+if (S.cam) camOn().then(() => { if (S.cur) vStart(); });   // 카메라 모드면 프리뷰 복원 + 롤 중이면 녹화 재개
+else if (S.cur && S.mic) micStart();   // 롤 중 앱 재시작 → 녹음 재개 (권한 물어볼 수 있음)
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

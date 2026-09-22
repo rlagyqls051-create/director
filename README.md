@@ -18,6 +18,29 @@
    테이크 판정은 구간에서 자동 도출 (전부 삭제→삭제, 편집에쓰자 하나라도→편집에쓰자, 나머지→보류).
    `테이크 보류` 버튼으로 판정 유보 가능, `계속 롤`은 테이크 안 끝내고 이어서 진행
 4. `보내기` — FCPXML / SRT / CSV, iOS 공유시트 → AirDrop으로 맥 전달
+   - `내 저장소로 전송` — 설정의 저장소 주소로 로그 파일+미디어를 한 번에 업로드 (오프컷 AI 연동용)
+
+## 셀프 촬영 모드 (앱 안 카메라)
+
+설정에서 `앱 안 카메라`를 켜면 ROLL 위에 라이브 프리뷰가 뜨고, 롤 동안 폰 카메라로
+영상을 직접 녹화 — 스노우처럼 카메라가 앱에 붙어있는 형태. 혼자 찍는 사람용.
+
+- 앱이 직접 녹화하므로 **영상 시작 = 앱 타임라인 0초** — 싱크 오프셋 사실상 불필요
+- mp4로 녹화되는 기기(iOS 등)는 파일명이 `C0001.MP4` 그대로 → FCPXML 릴링크 매칭
+- `↻` 버튼으로 전면/후면 전환 (롤 중에는 잠금 — 전환하면 녹화가 끊김)
+- `테이크 영상 보내기`로 테이크별 영상 공유/저장. webm으로 녹화되는 기기는
+  프리미어가 직접 못 읽으니 변환 필요
+- 녹화된 영상은 메모리에만 있음 — 촬영 후 바로 export (오디오와 동일)
+
+## 오프컷 계정 / 저장소
+
+설정에 `오프컷 ID` + `저장소 주소 + 비번`을 입력하면:
+
+- 파일명이 `ID_프로젝트_촬영로그_날짜` 형태가 되고, FCPXML `<metadata>`와 CSV 첫
+  컬럼에 ID가 박힘 → 오프컷 AI가 소유자를 인식해 자동 컷편집에 활용
+- `내 저장소로 전송` 버튼이 FCPXML+CSV+SRT+테이크 오디오/영상을 multipart로
+  한 번에 POST (`Authorization: Basic ID:비번`)
+- 비번은 폰 localStorage에만 저장됨 (서버 없는 앱이라 평문 — 공유 기기면 주의)
 
 ## 프리미어 연동
 
@@ -48,7 +71,9 @@
 
 ```js
 S = {
-  project, fps, prefix, startNo, slate, sound, syncOffset,
+  project, fps, prefix, startNo, slate, sound, syncOffset, mic,
+  cam, camFacing,          // 앱 안 카메라 모드 + 전면/후면
+  uid, upUrl, upw,         // 오프컷 ID + 저장소 주소/비번
   takes: [{ num, fname, startMs, endMs, status,  // take status: OK(편집에쓰자)|HOLD(보류)|NG(삭제)
             offsetMs?,                           // 이 테이크의 플래시 싱크 오프셋 (없으면 S.syncOffset)
             sections: [{start,end,status}],      // section status: OK(편집에쓰자)|KEEP(특이사항)|NG(삭제)
