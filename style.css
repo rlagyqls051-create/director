@@ -140,6 +140,7 @@ body.rolling #playhead { display:block; }
 .expBtns { display:flex; flex-direction:column; gap:10px; }
 .expBtn { background:#2c2c2e; color:#eee; border:none; border-radius:12px; padding:15px; font-size:16px; font-weight:700; }
 .expBtn.primary { background:#0a84ff; color:#fff; }
+.expMedia { margin:0; font-size:12px; }
 .fld { display:block; font-size:13px; color:#aaa; margin-bottom:14px; }
 .fld input, .fld select {
   display:block; width:100%; margin-top:5px; background:#2c2c2e; border:1px solid #3a3a3c;
