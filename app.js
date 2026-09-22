@@ -124,11 +124,16 @@ function watchClaps(stream) {
 async function micStart() {
   if (!S.mic || S.cam || rec) return;   // 앱 안 카메라가 켜져 있으면 영상에 오디오가 같이 들어감
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    // 싱크/AI 분석용이라 모노+16kbps로 극한 절감 — 분당 ~120KB (박수·음성 파형은 충분히 남음)
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { channelCount: 1, sampleRate: { ideal: 16000 } },
+    });
     if (!S.cur) { stream.getTracks().forEach(t => t.stop()); return; }
     const mime = MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4'
       : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
-    const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    const opts = { audioBitsPerSecond: 16000 };
+    if (mime) opts.mimeType = mime;
+    const mr = new MediaRecorder(stream, opts);
     const chunks = [];
     mr.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
     mr.start(500);

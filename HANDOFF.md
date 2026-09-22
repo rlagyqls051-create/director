@@ -65,7 +65,8 @@ www/                  sync 결과물, gitignore됨
 - `계속 롤` = cutAt 버리고 복귀 (마이크 녹음도 유지)
 - 플래시: ROLL 시 `T##` 번호가 화면 가득 번쩍 + 1kHz 삑 — 카메라 파일 안 싱크 기준점
 - 싱크 오프셋: `S.syncOffset` 전역 + `t.offsetMs` 테이크별 → FCPXML `start=` 계산에 반영
-- 마이크: `S.mic` 켜면 롤 동안 MediaRecorder 녹음, 피크>베이스라인4배 시 `슬레이트 감지` 메모 자동.
+- 마이크: `S.mic` 켜면 롤 동안 MediaRecorder 녹음 (모노+16kbps — 싱크용 초저용량),
+  피크>베이스라인4배 시 `슬레이트 감지` 메모 자동.
   `audioBlobs`(Map)는 **메모리만 — 앱 재시작 시 소실** (export 전에 닫으면 안 됨)
 - 앱 안 카메라: `S.cam` 켜면 `camStream` 상시 프리뷰 + 롤 동안 `vrec`로 영상 녹화 →
   `videoBlobs`(Map, 역시 메모리만). mp4면 파일명이 fname 그대로라 FCPXML 릴링크 매칭됨.
