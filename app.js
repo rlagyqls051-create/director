@@ -513,6 +513,8 @@ async function uploadAll() {
     headers: { Authorization: 'Basic ' + b64(`${S.uid}:${S.upw}`) },
     body: fd,
   });
+  if (res.status === 401 || res.status === 403)
+    throw new Error('계정 인증 실패 — 오프컷 ID/비번을 확인하세요 (유료 계정 전용 기능)');
   if (!res.ok) throw new Error(`서버 응답 ${res.status}`);
 }
 
