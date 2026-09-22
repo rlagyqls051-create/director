@@ -478,7 +478,7 @@ const blobToB64 = blob => new Promise((res, rej) => {
 /* ---------- 내 저장소 업로드 (오프컷 AI 연동용) ---------- */
 const b64 = s => btoa(String.fromCharCode(...new TextEncoder().encode(s)));
 const fmtSize = b => b >= 1048576 ? (b / 1048576).toFixed(1) + 'MB' : Math.ceil(b / 1024) + 'KB';
-const mediaBytes = () => [...audioBlobs.values(), ...videoBlobs.values()].reduce((a, v) => a + v.blob.size, 0);
+const blobBytes = map => [...map.values()].reduce((a, v) => a + v.blob.size, 0);
 
 // 설정의 저장소 주소로 로그 파일 + 테이크 미디어를 multipart 한 번에 POST
 // 서버 쪽에서 Basic auth(uid:upw) 확인 → uid 폴더 아래 파일 저장하는 구조를 상정
@@ -494,14 +494,15 @@ async function uploadAll() {
     const srt = buildSRT();
     if (srt) fd.append('files', new Blob([srt], { type: 'application/x-subrip' }), base + '.srt');
   }
-  if ($('#expMedia').checked) {   // 영상·오디오는 용량이 크니 선택사항 — 로그만 보낼 수도 있음
+  // 미디어는 용량이 크니 각각 선택사항 — 로그만 / 오디오만 보낼 수도 있음
+  if ($('#expAudUp').checked)
     for (const [n, a] of [...audioBlobs.entries()].sort((x, y) => x[0] - y[0]))
       fd.append('files', a.blob, `T${pad(n, 2)}.${a.ext}`);
+  if ($('#expVidUp').checked)
     for (const [n, v] of [...videoBlobs.entries()].sort((x, y) => x[0] - y[0])) {
       const t = S.takes.find(x => x.num === n);
       fd.append('files', v.blob, t ? vidName(t, v.ext) : `T${pad(n, 2)}.${v.ext}`);
     }
-  }
   const res = await fetch(S.upUrl, {
     method: 'POST',
     headers: { Authorization: 'Basic ' + b64(`${S.uid}:${S.upw}`) },
@@ -574,9 +575,11 @@ $('#takeList').addEventListener('click', e => {
 });
 
 $('#btnExport').addEventListener('click', () => {
-  const mb = mediaBytes();
-  $('#expMediaSize').textContent = mb ? `— ${fmtSize(mb)}` : '— 녹화된 미디어 없음';
-  $('#expMedia').disabled = !mb;
+  const vb = blobBytes(videoBlobs), ab = blobBytes(audioBlobs);
+  $('#expVidSize').textContent = vb ? `— ${fmtSize(vb)}` : '— 없음';
+  $('#expAudSize').textContent = ab ? `— ${fmtSize(ab)}` : '— 없음';
+  $('#expVidUp').disabled = !vb;
+  $('#expAudUp').disabled = !ab;
   $('#exportSheet').classList.remove('hidden');
 });
 $('#expCancel').addEventListener('click', () => $('#exportSheet').classList.add('hidden'));
